@@ -28,8 +28,8 @@
 #define WIFI_SSID       "sanathraag"
 #define WIFI_PASSWORD   "sanathraag"
 
-#define API_KEY         "AIzaSyDa-LhnJNCX_fMFYxfMOUFEMnYJlJwY6eM"
-#define DATABASE_URL    "https://smart-parking-60cdf-default-rtdb.asia-southeast1.firebasedatabase.app"
+#define API_KEY      "AIzaSyCagoL_9_uaeIcqJA8GxYSvClHi1MskSl4"
+#define DATABASE_URL "https://finialsmartparking-default-rtdb.asia-southeast1.firebasedatabase.app"
 
 
 /* ----------------------- 2. REAL SENSOR PINS (Slot 1 only) ------------- */

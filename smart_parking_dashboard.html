@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Smart Parking Finder</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0b1120;--surface:#131c2e;--card:#1a2540;
+  --border:#243050;--border2:#2e3d60;
+  --text:#e8edf5;--muted:#8192b0;--dim:#4b5e80;
+  --green:#22c55e;--green-bg:#052e16;--green-bd:#166534;
+  --red:#ef4444;--red-bg:#3b0000;--red-bd:#7f1d1d;
+  --blue:#3b82f6;--blue-dk:#1e3a8a;
+  --accent:#6366f1;--accent-bg:#1e1b4b;
+  --amber:#f59e0b;--amber-bg:#1c1200;--amber-bd:#78350f;
+  --gold:#f59e0b;
+  font-family:'Inter',system-ui,sans-serif;
+}
+body{background:var(--bg);color:var(--text);min-height:100vh}
+
+/* ══ OVERLAY BASE ══ */
+.overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
+
+/* ══ AUTH ══ */
+.auth-box{width:100%;max-width:400px;background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:36px 32px;text-align:center}
+.auth-logo{font-size:48px;margin-bottom:12px}
+.auth-box h2{font-size:22px;font-weight:700;margin-bottom:4px}
+.auth-sub{font-size:13px;color:var(--muted);margin-bottom:28px}
+.auth-tabs{display:flex;gap:2px;background:var(--bg);border-radius:10px;padding:3px;margin-bottom:20px}
+.auth-tab{flex:1;padding:8px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border:none;background:transparent;transition:all .2s;font-family:inherit}
+.auth-tab.active{background:var(--card);color:var(--text)}
+.auth-form{display:flex;flex-direction:column;gap:12px}
+.auth-input{width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1.5px solid var(--border2);color:var(--text);font-size:14px;outline:none;transition:border .2s;font-family:inherit}
+.auth-input:focus{border-color:var(--accent)}
+.auth-input::placeholder{color:var(--dim)}
+.auth-btn{width:100%;padding:13px;border-radius:10px;background:var(--accent);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .2s;font-family:inherit}
+.auth-btn:hover{opacity:.85}
+.auth-btn:disabled{opacity:.5;cursor:wait}
+.auth-divider{display:flex;align-items:center;gap:10px;color:var(--dim);font-size:12px;margin:6px 0}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+.guest-btn{width:100%;padding:11px;border-radius:10px;background:transparent;border:1.5px solid var(--border2);color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit}
+.guest-btn:hover{border-color:var(--blue);color:#93c5fd}
+.auth-error{background:#3b0000;border:1px solid #7f1d1d;border-radius:8px;padding:9px 12px;font-size:13px;color:#fca5a5;text-align:left;display:none;margin-bottom:4px}
+
+/* ══ LOCATION PICKER ══ */
+#location-overlay{display:none}
+.loc-box{width:100%;max-width:480px;background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:36px 32px}
+.loc-box h2{font-size:22px;font-weight:700;margin-bottom:6px;text-align:center}
+.loc-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:24px}
+.loc-search-wrap{position:relative;margin-bottom:20px}
+.loc-search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none}
+.loc-search{width:100%;padding:13px 14px 13px 42px;border-radius:12px;background:var(--bg);border:1.5px solid var(--border2);color:var(--text);font-size:14px;outline:none;font-family:inherit;transition:border .2s}
+.loc-search:focus{border-color:var(--accent)}
+.loc-search::placeholder{color:var(--dim)}
+.loc-section-label{font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1.4px;text-transform:uppercase;margin-bottom:10px}
+.loc-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.loc-card{border:1.5px solid var(--border);border-radius:14px;padding:18px 14px;cursor:pointer;transition:all .2s;background:var(--card);text-align:center}
+.loc-card:hover{border-color:var(--accent);background:var(--accent-bg)}
+.loc-card.selected{border-color:var(--accent);background:var(--accent-bg)}
+.lc-emoji{font-size:28px;margin-bottom:8px}
+.lc-name{font-size:13px;font-weight:700;margin-bottom:3px}
+.lc-slots{font-size:11px;color:var(--muted)}
+.loc-custom-result{background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;display:none;align-items:center;gap:12px;cursor:pointer;transition:border .2s;margin-bottom:16px}
+.loc-custom-result:hover{border-color:var(--accent)}
+.lcr-icon{font-size:24px}
+.lcr-name{font-size:14px;font-weight:600}
+.lcr-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.loc-confirm-btn{width:100%;padding:14px;border-radius:12px;background:var(--accent);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .2s}
+.loc-confirm-btn:hover{opacity:.85}
+.loc-confirm-btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ══ MAIN APP ══ */
+#app{display:none}
+header{background:var(--surface);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{font-size:26px}
+.logo h1{font-size:17px;font-weight:700}
+.logo p{font-size:11px;color:var(--muted);margin-top:1px}
+.header-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.live-badge{display:flex;align-items:center;gap:7px;background:#052e1a;border:1px solid var(--green);padding:5px 12px;border-radius:20px;font-size:11px;color:var(--green);font-weight:700}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}
+.loc-chip{display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--amber-bd);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--amber);font-weight:600;cursor:pointer;transition:all .2s}
+.loc-chip:hover{border-color:var(--amber);background:#2a1900}
+.user-chip{display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--border2);border-radius:20px;padding:5px 12px 5px 5px;cursor:pointer;transition:all .2s}
+.user-chip:hover{border-color:var(--accent)}
+.user-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:2px solid transparent;transition:all .2s;flex-shrink:0}
+.user-name{font-size:12px;font-weight:600;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.icon-btn{background:var(--card);border:1px solid var(--border2);border-radius:10px;padding:6px 11px;cursor:pointer;font-size:12px;font-weight:600;color:var(--muted);transition:all .2s;display:flex;align-items:center;gap:5px;font-family:inherit}
+.icon-btn:hover{border-color:var(--blue);color:#93c5fd}
+
+/* ══ LOCATION CONTEXT BAR ══ */
+.location-context{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 28px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.lc-info{display:flex;align-items:center;gap:10px}
+.lc-pin{font-size:18px}
+.lc-name-txt{font-size:14px;font-weight:700}
+.lc-sub-txt{font-size:11px;color:var(--muted)}
+.change-loc-btn{font-size:12px;color:var(--accent);background:none;border:1px solid var(--accent-bg);border-radius:8px;padding:5px 12px;cursor:pointer;font-weight:600;font-family:inherit;transition:all .2s}
+.change-loc-btn:hover{background:var(--accent-bg)}
+
+/* ══ SUMMARY ══ */
+.summary{display:flex;gap:10px;padding:16px 28px}
+.stat-card{flex:1;background:var(--surface);border-radius:12px;padding:14px 10px;border:1px solid var(--border);text-align:center}
+.stat-card .value{font-size:30px;font-weight:700;margin-bottom:2px;font-variant-numeric:tabular-nums}
+.stat-card .label{font-size:11px;color:var(--muted);font-weight:500}
+.stat-total    .value{color:var(--blue)}
+.stat-available .value{color:var(--green)}
+.stat-reserved .value{color:var(--amber)}
+.stat-filled   .value{color:var(--red)}
+
+/* ══ FILTER TABS ══ */
+.filter-bar{padding:0 28px 14px;display:flex;gap:8px;flex-wrap:wrap}
+.filter-tab{padding:7px 16px;border-radius:20px;border:1.5px solid var(--border);background:var(--surface);font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s;user-select:none}
+.filter-tab:hover{border-color:var(--blue);color:#93c5fd}
+.filter-tab.active{background:var(--blue-dk);border-color:var(--blue);color:#fff}
+
+/* ══ SLOTS ══ */
+.slots-section{padding:0 28px 32px}
+.slots-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.slot-card{border-radius:16px;padding:18px 14px 14px;border:2px solid transparent;transition:all .3s;position:relative;overflow:hidden;text-align:center}
+.slot-card.loading    {background:var(--card);border-color:var(--border)}
+.slot-card.empty      {background:var(--green-bg);border-color:var(--green-bd);cursor:pointer}
+.slot-card.empty:hover{transform:translateY(-3px);border-color:var(--green);box-shadow:0 6px 20px rgba(22,163,74,.2)}
+.slot-card.filled     {background:var(--red-bg);border-color:var(--red-bd);cursor:not-allowed}
+.slot-card.reserved   {background:var(--amber-bg);border-color:var(--amber-bd)}
+.slot-card.mine       {background:var(--accent-bg);border-color:var(--accent)}
+.slot-card.hidden     {display:none}
+.slot-zone-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:8px;margin-bottom:8px;text-transform:uppercase}
+.slot-card.loading  .slot-zone-tag{background:var(--surface);color:var(--dim)}
+.slot-card.empty    .slot-zone-tag{background:#064e3b;color:#4ade80}
+.slot-card.filled   .slot-zone-tag{background:var(--red-bg);color:#f87171;border:1px solid var(--red-bd)}
+.slot-card.reserved .slot-zone-tag{background:#291500;color:#fbbf24;border:1px solid #78350f}
+.slot-card.mine     .slot-zone-tag{background:#312e81;color:#a5b4fc;border:1px solid #4338ca}
+.slot-number{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.slot-card.loading  .slot-number{color:var(--dim)}
+.slot-card.empty    .slot-number{color:#4ade80}
+.slot-card.filled   .slot-number{color:#f87171}
+.slot-card.reserved .slot-number{color:#fbbf24}
+.slot-card.mine     .slot-number{color:#a5b4fc}
+.slot-icon{font-size:34px;margin-bottom:7px}
+.slot-status{font-size:13px;font-weight:700;margin-bottom:5px}
+.slot-card.loading  .slot-status{color:var(--dim)}
+.slot-card.empty    .slot-status{color:#4ade80}
+.slot-card.filled   .slot-status{color:#f87171}
+.slot-card.reserved .slot-status{color:#fbbf24}
+.slot-card.mine     .slot-status{color:#a5b4fc}
+.time-left{font-size:12px;font-weight:700;margin-bottom:8px;padding:4px 10px;border-radius:20px;display:inline-block}
+.slot-card.reserved .time-left{background:#291500;color:#fbbf24;border:1px solid #78350f}
+.slot-card.mine     .time-left{background:#312e81;color:#a5b4fc;border:1px solid #4338ca}
+.time-left.urgent{color:#f87171!important;border-color:#7f1d1d!important;background:var(--red-bg)!important;animation:blink 1s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
+.slot-distance{font-size:11px;color:var(--dim);min-height:13px;margin-bottom:8px}
+.book-btn{display:none;align-items:center;justify-content:center;gap:5px;width:100%;padding:8px 0;border-radius:10px;background:var(--accent-bg);border:1px solid var(--accent);color:#a5b4fc;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;margin-top:2px}
+.slot-card.empty .book-btn{display:flex}
+.book-btn:hover{background:#2e2a6b}
+.dir-btn{display:none;align-items:center;justify-content:center;gap:5px;width:100%;padding:7px 0;border-radius:10px;background:#14532d;border:1px solid #16a34a;color:#4ade80;font-size:11px;font-weight:600;cursor:pointer;transition:background .2s;font-family:inherit;margin-top:4px}
+.slot-card.empty .dir-btn{display:flex}
+.dir-btn:hover{background:#166534}
+.slot-bar{position:absolute;bottom:0;left:0;right:0;height:4px;border-radius:0 0 14px 14px;transition:background .4s}
+.slot-card.loading  .slot-bar{background:var(--border)}
+.slot-card.empty    .slot-bar{background:#16a34a}
+.slot-card.filled   .slot-bar{background:var(--red)}
+.slot-card.reserved .slot-bar{background:var(--amber)}
+.slot-card.mine     .slot-bar{background:var(--accent)}
+
+/* ══ MODAL OVERLAY ══ */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;opacity:0;pointer-events:none;transition:opacity .25s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:28px;transform:translateY(20px);transition:transform .25s;max-height:90vh;overflow-y:auto}
+.modal-overlay.open .modal{transform:translateY(0)}
+.modal-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px}
+.modal-title{font-size:18px;font-weight:700}
+.modal-sub{font-size:12px;color:var(--muted);margin-top:3px}
+.close-btn{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1;padding:0}
+.close-btn:hover{color:var(--text)}
+
+/* ══════════════════════════════════════════
+   PROFILE MODAL
+══════════════════════════════════════════ */
+#profile-modal .modal{max-width:420px}
+
+/* Avatar section */
+.profile-avatar-section{display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid var(--border)}
+.profile-avatar-big{
+  width:80px;height:80px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:32px;font-weight:700;border:3px solid transparent;
+  transition:all .3s;cursor:default;user-select:none;
+}
+.profile-avatar-name{font-size:17px;font-weight:700}
+.profile-avatar-email{font-size:12px;color:var(--muted)}
+.profile-account-type{font-size:11px;font-weight:700;border-radius:20px;padding:3px 12px;margin-top:4px}
+.profile-account-type.registered{background:#1e1b4b;color:#a5b4fc;border:1px solid #4338ca}
+.profile-account-type.guest{background:var(--surface);color:var(--muted);border:1px solid var(--border2)}
+
+/* Color picker */
+.color-picker-label{font-size:10px;font-weight:700;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;text-align:center}
+.avatar-colors{display:flex;gap:8px;justify-content:center}
+.avatar-color-swatch{
+  width:28px;height:28px;border-radius:50%;cursor:pointer;
+  border:3px solid transparent;transition:all .2s;
+}
+.avatar-color-swatch.selected{border-color:var(--text);transform:scale(1.15)}
+
+/* Profile form fields */
+.profile-field{margin-bottom:16px}
+.profile-field label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px}
+.profile-input{
+  width:100%;padding:12px 14px;border-radius:10px;
+  background:var(--bg);border:1.5px solid var(--border2);
+  color:var(--text);font-size:14px;outline:none;
+  font-family:inherit;transition:border .2s;
+}
+.profile-input:focus{border-color:var(--accent)}
+.profile-input::placeholder{color:var(--dim)}
+.profile-input:disabled{color:var(--dim);cursor:not-allowed;opacity:.6}
+.profile-input-hint{font-size:11px;color:var(--dim);margin-top:5px}
+
+/* Vehicle tag */
+.vehicle-input-wrap{position:relative}
+.vehicle-icon{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:15px;pointer-events:none}
+.vehicle-input{padding-left:36px!important;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+
+/* Save button */
+.profile-save-btn{
+  width:100%;padding:13px;border-radius:12px;
+  background:var(--accent);border:none;color:#fff;
+  font-size:14px;font-weight:700;cursor:pointer;
+  font-family:inherit;transition:all .2s;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.profile-save-btn:hover{opacity:.85}
+.profile-save-btn:disabled{opacity:.5;cursor:wait}
+.profile-save-msg{text-align:center;font-size:13px;margin-top:10px;min-height:18px;transition:all .3s}
+.profile-save-msg.ok  {color:var(--green)}
+.profile-save-msg.err {color:#f87171}
+
+/* Danger zone */
+.profile-danger{margin-top:20px;padding-top:20px;border-top:1px solid var(--border)}
+.profile-danger-label{font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.logout-btn-big{
+  width:100%;padding:11px;border-radius:10px;
+  background:transparent;border:1.5px solid var(--red-bd);
+  color:#f87171;font-size:13px;font-weight:600;cursor:pointer;
+  font-family:inherit;transition:all .2s;
+}
+.logout-btn-big:hover{background:var(--red-bg)}
+
+/* ══ BOOKING MODAL ══ */
+.booking-slot-info{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:20px}
+.bsi-icon{font-size:32px}
+.bsi-label{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.8px}
+.bsi-name{font-size:16px;font-weight:700;color:var(--green)}
+.bsi-zone{font-size:12px;color:var(--dim)}
+.section-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
+.duration-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px}
+.dur-opt{border:1.5px solid var(--border);border-radius:12px;padding:12px 8px;text-align:center;cursor:pointer;transition:all .2s;background:var(--card)}
+.dur-opt:hover{border-color:var(--accent)}
+.dur-opt.selected{background:var(--accent-bg);border-color:var(--accent)}
+.dur-time{font-size:13px;font-weight:700;margin-bottom:3px}
+.dur-price{font-size:15px;font-weight:700;color:var(--gold)}
+.dur-opt.selected .dur-time{color:#c7d2fe}
+.booking-summary{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:20px;display:flex;flex-direction:column;gap:8px}
+.bs-row{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+.bs-row.total{color:var(--text);font-weight:700;font-size:14px;border-top:1px solid var(--border);padding-top:8px}
+.bs-row.total .bs-val{color:var(--gold)}
+.proceed-btn{width:100%;padding:14px;border-radius:12px;background:var(--accent);border:none;color:#fff;font-size:15px;font-weight:700;cursor:pointer;transition:opacity .2s;font-family:inherit}
+.proceed-btn:hover{opacity:.85}
+
+/* ══ PAYMENT MODAL ══ */
+.pay-amount-display{background:var(--bg);border-radius:12px;padding:18px;text-align:center;margin-bottom:20px}
+.pa-label{font-size:12px;color:var(--muted);margin-bottom:4px}
+.pa-value{font-size:34px;font-weight:700;color:var(--gold)}
+.pa-slot{font-size:12px;color:var(--dim);margin-top:4px}
+.pay-tabs{display:flex;gap:2px;background:var(--bg);border-radius:10px;padding:3px;margin-bottom:16px}
+.pay-tab{flex:1;padding:9px 6px;border-radius:8px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border:none;background:transparent;transition:all .2s;font-family:inherit;text-align:center}
+.pay-tab.active{background:var(--card);color:var(--text)}
+.pay-panel{display:none}
+.pay-panel.active{display:block}
+.upi-options{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.upi-row{display:flex;align-items:center;gap:12px;background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .2s}
+.upi-row:hover{border-color:var(--accent)}
+.upi-row.sel{border-color:var(--accent);background:var(--accent-bg)}
+.upi-logo{font-size:20px;width:26px;text-align:center}
+.upi-label{font-size:13px;font-weight:600}
+.upi-id{font-size:11px;color:var(--muted)}
+.upi-radio{margin-left:auto;width:16px;height:16px;border-radius:50%;border:2px solid var(--border2);background:transparent;transition:all .2s}
+.upi-row.sel .upi-radio{border-color:var(--accent);background:var(--accent)}
+.or-divider{text-align:center;font-size:12px;color:var(--dim);margin:8px 0}
+.upi-input-row{display:flex;gap:8px}
+.upi-id-input{flex:1;padding:11px 13px;border-radius:10px;background:var(--bg);border:1.5px solid var(--border2);color:var(--text);font-size:13px;outline:none;font-family:inherit;transition:border .2s}
+.upi-id-input:focus{border-color:var(--accent)}
+.upi-id-input::placeholder{color:var(--dim)}
+.verify-btn{padding:11px 14px;border-radius:10px;background:var(--surface);border:1.5px solid var(--border2);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s}
+.verify-btn:hover{border-color:var(--accent);color:var(--accent)}
+.card-form{display:flex;flex-direction:column;gap:10px}
+.card-input{width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1.5px solid var(--border2);color:var(--text);font-size:14px;outline:none;font-family:inherit;transition:border .2s}
+.card-input:focus{border-color:var(--blue)}
+.card-input::placeholder{color:var(--dim)}
+.card-row{display:flex;gap:10px}
+.card-row .card-input{flex:1}
+.netbank-options{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.nb-opt{display:flex;align-items:center;gap:10px;background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:11px 13px;cursor:pointer;transition:all .2s}
+.nb-opt:hover{border-color:var(--blue)}
+.nb-opt.sel{border-color:var(--blue);background:#0c1a3b}
+.nb-icon{font-size:20px}
+.nb-label{font-size:12px;font-weight:600}
+.pay-now-btn{width:100%;padding:14px;border-radius:12px;margin-top:14px;background:#16a34a;border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;font-family:inherit}
+.pay-now-btn:hover{background:#15803d}
+.pay-now-btn:disabled{background:var(--dim);cursor:wait}
+.pay-processing{display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:30px;text-align:center}
+.pay-processing.show{display:flex}
+.spinner{width:48px;height:48px;border-radius:50%;border:4px solid var(--border);border-top-color:var(--green);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.proc-text{font-size:16px;font-weight:600}
+.proc-sub{font-size:13px;color:var(--muted)}
+.pay-success{display:none;flex-direction:column;align-items:center;gap:12px;padding:20px 10px;text-align:center}
+.pay-success.show{display:flex}
+.success-check{font-size:56px}
+.succ-title{font-size:20px;font-weight:700;color:var(--green)}
+.succ-id{font-size:11px;color:var(--muted);background:var(--card);border-radius:8px;padding:6px 12px}
+.succ-details{background:var(--bg);border-radius:12px;padding:16px;width:100%;text-align:left}
+.succ-row{display:flex;justify-content:space-between;font-size:13px;padding:4px 0}
+.sr-label{color:var(--muted)}
+.sr-val{font-weight:600}
+.done-btn{width:100%;padding:13px;border-radius:12px;margin-top:6px;background:var(--accent);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+
+/* ══ BOOKINGS PANEL ══ */
+#bookings-panel{position:fixed;right:0;top:0;bottom:0;width:360px;max-width:100vw;background:var(--surface);border-left:1px solid var(--border2);z-index:1100;transform:translateX(100%);transition:transform .3s;display:flex;flex-direction:column}
+#bookings-panel.open{transform:translateX(0)}
+.panel-header{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 16px;border-bottom:1px solid var(--border)}
+.panel-header h3{font-size:16px;font-weight:700}
+.panel-content{flex:1;overflow-y:auto;padding:16px 20px}
+.booking-card{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:10px}
+.bk-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.bk-slot-name{font-size:14px;font-weight:700}
+.bk-status{font-size:10px;font-weight:700;border-radius:20px;padding:3px 10px}
+.bk-status.active{background:#064e3b;color:#4ade80}
+.bk-status.expired{background:var(--surface);color:var(--dim)}
+.bk-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.bk-tag{font-size:11px;color:var(--muted);background:var(--surface);border-radius:6px;padding:2px 8px}
+.bk-amount{font-size:15px;font-weight:700;color:var(--gold)}
+.bk-countdown{font-size:12px;font-weight:700;color:var(--amber);margin-top:4px}
+.bk-txn{font-size:10px;color:var(--dim);margin-top:3px}
+.no-bookings{text-align:center;color:var(--dim);padding:40px 20px;font-size:14px}
+
+/* ══ TOAST ══ */
+#toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:11px 18px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:9px;transition:transform .3s;z-index:9000;white-space:nowrap;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+#toast.show{transform:translateX(-50%) translateY(0)}
+#toast.success{border-color:#16a34a}
+#toast.error{border-color:var(--red);color:#fca5a5}
+#toast.warn{border-color:#d97706;color:#fbbf24}
+
+/* ══ BANNERS ══ */
+#loc-banner{margin:0 28px 10px;background:#1c1917;border:1px solid #78350f;color:#fbbf24;border-radius:10px;padding:11px 16px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+#loc-banner button{background:#92400e;border:none;color:#fef3c7;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap}
+#error-banner{display:none;margin:0 28px 14px;background:#451a03;border:1px solid #92400e;color:#fbbf24;border-radius:10px;padding:11px 16px;font-size:12px}
+footer{text-align:center;padding:14px;font-size:11px;color:var(--dim);border-top:1px solid var(--surface)}
+#last-update{color:var(--dim);margin-left:8px}
+
+/* ══ RESPONSIVE ══ */
+@media(max-width:640px){
+  header{padding:12px}
+  .location-context,.summary,.filter-bar,.slots-section{padding-left:14px;padding-right:14px}
+  #loc-banner,#error-banner{margin-left:14px;margin-right:14px}
+  .slots-grid{grid-template-columns:repeat(2,1fr)}
+  .summary{flex-wrap:wrap}
+  .stat-card{min-width:calc(50% - 5px)}
+  #bookings-panel{width:100%}
+  .user-name{display:none}
+}
+@media(max-width:380px){
+  .slots-grid{grid-template-columns:1fr}
+  .duration-grid{grid-template-columns:repeat(2,1fr)}
+  .loc-cards{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════
+     SCREEN 1 — AUTH
+═════════════════════════════════ -->
+<div class="overlay" id="auth-overlay">
+  <div class="auth-box">
+    <div class="auth-logo">🅿️</div>
+    <h2>Smart Parking Finder</h2>
+    <p class="auth-sub">SR University · IoT Real-Time Parking</p>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login"  onclick="switchAuthTab('login')">Login</button>
+      <button class="auth-tab"        id="tab-signup" onclick="switchAuthTab('signup')">Sign Up</button>
+    </div>
+    <div class="auth-error" id="auth-error"></div>
+    <div id="login-form" class="auth-form">
+      <input class="auth-input" id="login-email" type="email"    placeholder="Email address"  autocomplete="email">
+      <input class="auth-input" id="login-pass"  type="password" placeholder="Password"       autocomplete="current-password">
+      <button class="auth-btn" id="login-btn" onclick="doLogin()">Login →</button>
+    </div>
+    <div id="signup-form" class="auth-form" style="display:none">
+      <input class="auth-input" id="signup-name"  type="text"     placeholder="Full name">
+      <input class="auth-input" id="signup-email" type="email"    placeholder="Email address" autocomplete="email">
+      <input class="auth-input" id="signup-pass"  type="password" placeholder="Password (min 6 chars)" autocomplete="new-password">
+      <button class="auth-btn" id="signup-btn" onclick="doSignup()">Create Account →</button>
+    </div>
+    <div class="auth-divider">or</div>
+    <button class="guest-btn" onclick="doGuest()">👤 Continue as Guest</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     SCREEN 2 — LOCATION PICKER
+═════════════════════════════════ -->
+<div class="overlay" id="location-overlay">
+  <div class="loc-box">
+    <h2>📍 Where are you parking?</h2>
+    <p class="loc-sub">Enter a location or pick a campus area below</p>
+    <div class="loc-search-wrap">
+      <span class="loc-search-icon">🔍</span>
+      <input class="loc-search" id="loc-search-input" type="text"
+             placeholder="Type a location name…"
+             oninput="handleLocSearch(this.value)"
+             autocomplete="off">
+    </div>
+    <div class="loc-custom-result" id="loc-custom-result" onclick="selectCustomLocation()">
+      <span class="lcr-icon">📌</span>
+      <div>
+        <div class="lcr-name" id="lcr-name-text">Custom Location</div>
+        <div class="lcr-sub">Show all available slots at this location</div>
+      </div>
+    </div>
+    <div class="loc-section-label">Campus Parking Areas</div>
+    <div class="loc-cards" id="loc-cards"></div>
+    <button class="loc-confirm-btn" id="loc-confirm-btn" disabled onclick="confirmLocation()">
+      Select a location to continue
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     SCREEN 3 — MAIN APP
+═════════════════════════════════ -->
+<div id="app">
+
+<header>
+  <div class="logo">
+    <span class="logo-icon">🅿️</span>
+    <div>
+      <h1>Smart Parking Finder</h1>
+      <p>IoT Real-Time · SR University</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    <div class="loc-chip" onclick="changeLocation()">📍 <span id="header-loc-name">All Areas</span></div>
+    <button class="icon-btn" onclick="openBookingsPanel()">🎫 My Bookings</button>
+    <!-- User chip opens profile modal -->
+    <div class="user-chip" onclick="openProfileModal()" title="Edit Profile">
+      <div class="user-avatar" id="user-avatar">?</div>
+      <span class="user-name" id="user-name">Guest</span>
+    </div>
+  </div>
+</header>
+
+<div class="location-context">
+  <div class="lc-info">
+    <span class="lc-pin">📍</span>
+    <div>
+      <div class="lc-name-txt" id="lc-name">All Areas</div>
+      <div class="lc-sub-txt"  id="lc-sub">Showing all 6 slots</div>
+    </div>
+  </div>
+  <button class="change-loc-btn" onclick="changeLocation()">Change Location</button>
+</div>
+
+<div class="summary">
+  <div class="stat-card stat-total">
+    <div class="value" id="stat-total">—</div><div class="label">Total</div>
+  </div>
+  <div class="stat-card stat-available">
+    <div class="value" id="stat-available">—</div><div class="label">Free</div>
+  </div>
+  <div class="stat-card stat-reserved">
+    <div class="value" id="stat-reserved">—</div><div class="label">Reserved</div>
+  </div>
+  <div class="stat-card stat-filled">
+    <div class="value" id="stat-filled">—</div><div class="label">Filled</div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <div class="filter-tab active" id="ftab-all"      onclick="setFilter('all')">All</div>
+  <div class="filter-tab"        id="ftab-empty"    onclick="setFilter('empty')">✅ Available</div>
+  <div class="filter-tab"        id="ftab-reserved" onclick="setFilter('reserved')">⏱ Reserved</div>
+  <div class="filter-tab"        id="ftab-filled"   onclick="setFilter('filled')">🚗 Filled</div>
+</div>
+
+<div id="loc-banner" style="display:none">
+  <span>📍 Allow location access for Google Maps directions.</span>
+  <button onclick="requestLocationAndOpen()">Allow & Navigate</button>
+</div>
+<div id="error-banner">⚠️ Cannot reach Firebase. Check internet or database rules.</div>
+
+<div class="slots-section">
+  <div class="slots-grid" id="slots-grid"></div>
+</div>
+
+<footer>
+  Smart Parking Finder &nbsp;|&nbsp; SDLC Project &nbsp;|&nbsp; ESP32 · Firebase · HC-SR04
+  <span id="last-update"></span>
+</footer>
+</div><!-- /#app -->
+
+<!-- ══════════════════════════════
+     PROFILE MODAL
+═════════════════════════════════ -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">👤 My Profile</div>
+        <div class="modal-sub">Edit your details anytime</div>
+      </div>
+      <button class="close-btn" onclick="closeModal('profile-modal')">×</button>
+    </div>
+
+    <!-- Avatar + identity -->
+    <div class="profile-avatar-section">
+      <div class="profile-avatar-big" id="prof-avatar-big">?</div>
+      <div>
+        <div class="profile-avatar-name" id="prof-display-name">Loading…</div>
+        <div class="profile-avatar-email" id="prof-email">—</div>
+        <div class="profile-account-type" id="prof-account-type">Guest</div>
+      </div>
+      <!-- Avatar color picker -->
+      <div>
+        <div class="color-picker-label">Avatar Color</div>
+        <div class="avatar-colors" id="avatar-colors"></div>
+      </div>
+    </div>
+
+    <!-- Editable fields -->
+    <div class="profile-field">
+      <label>Display Name</label>
+      <input class="profile-input" id="prof-name-input" type="text" placeholder="Your name" maxlength="40">
+    </div>
+
+    <div class="profile-field">
+      <label>Email Address</label>
+      <input class="profile-input" id="prof-email-input" type="email" disabled placeholder="—">
+      <div class="profile-input-hint">Email cannot be changed from here.</div>
+    </div>
+
+    <div class="profile-field">
+      <label>🚗 Vehicle Number</label>
+      <div class="vehicle-input-wrap">
+        <span class="vehicle-icon">🚗</span>
+        <input class="profile-input vehicle-input" id="prof-vehicle" type="text"
+               placeholder="TS 09 AB 1234" maxlength="12"
+               oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div class="profile-input-hint">Your vehicle registration number.</div>
+    </div>
+
+    <div class="profile-field">
+      <label>📱 Phone Number</label>
+      <input class="profile-input" id="prof-phone" type="tel"
+             placeholder="+91 9876543210" maxlength="15">
+    </div>
+
+    <div class="profile-field">
+      <label>🏢 Department / Course</label>
+      <input class="profile-input" id="prof-dept" type="text"
+             placeholder="e.g. B.Tech CSE – Cybersecurity" maxlength="60">
+    </div>
+
+    <button class="profile-save-btn" id="prof-save-btn" onclick="saveProfile()">
+      💾 Save Changes
+    </button>
+    <div class="profile-save-msg" id="prof-save-msg"></div>
+
+    <!-- Danger zone -->
+    <div class="profile-danger">
+      <div class="profile-danger-label">⚠ Account Actions</div>
+      <button class="logout-btn-big" onclick="doLogout()">↩ Logout</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     BOOKING MODAL
+═════════════════════════════════ -->
+<div class="modal-overlay" id="booking-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div><div class="modal-title">📅 Book Parking Slot</div><div class="modal-sub">Select duration and confirm booking</div></div>
+      <button class="close-btn" onclick="closeModal('booking-modal')">×</button>
+    </div>
+    <div class="booking-slot-info">
+      <div class="bsi-icon">✅</div>
+      <div>
+        <div class="bsi-label">Booking For</div>
+        <div class="bsi-name" id="bk-slot-name">Slot 1</div>
+        <div class="bsi-zone" id="bk-slot-zone">North Wing</div>
+      </div>
+    </div>
+    <div class="section-label">Select Duration</div>
+    <div class="duration-grid" id="duration-grid"></div>
+    <div class="booking-summary">
+      <div class="bs-row"><span>Duration</span><span class="bs-val" id="bs-dur">—</span></div>
+      <div class="bs-row"><span>Parking Fee</span><span class="bs-val" id="bs-fee">—</span></div>
+      <div class="bs-row total"><span>Total</span><span class="bs-val" id="bs-total">—</span></div>
+    </div>
+    <button class="proceed-btn" onclick="openPaymentModal()">Proceed to Payment →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     PAYMENT MODAL
+═════════════════════════════════ -->
+<div class="modal-overlay" id="payment-modal">
+  <div class="modal">
+    <div class="pay-amount-display">
+      <div class="pa-label">Amount to Pay</div>
+      <div class="pa-value" id="pay-amount-display">₹0</div>
+      <div class="pa-slot"  id="pay-slot-display"></div>
+    </div>
+    <div class="pay-processing" id="pay-processing">
+      <div class="spinner"></div>
+      <div class="proc-text">Processing Payment…</div>
+      <div class="proc-sub">Please wait, do not close this window</div>
+    </div>
+    <div class="pay-success" id="pay-success">
+      <div class="success-check">✅</div>
+      <div class="succ-title">Payment Successful!</div>
+      <div class="succ-id" id="succ-txn-id">TXN#—</div>
+      <div class="succ-details" id="succ-details"></div>
+      <button class="done-btn" onclick="closePaymentSuccess()">Done 🎉</button>
+    </div>
+    <div id="pay-form-area">
+      <div class="modal-header" style="margin-bottom:16px">
+        <div class="modal-title">💳 Payment</div>
+        <button class="close-btn" onclick="closeModal('payment-modal')">×</button>
+      </div>
+      <div class="pay-tabs">
+        <button class="pay-tab active" onclick="switchPayTab('upi',this)">📱 UPI</button>
+        <button class="pay-tab"        onclick="switchPayTab('card',this)">💳 Card</button>
+        <button class="pay-tab"        onclick="switchPayTab('netbank',this)">🏦 Net Banking</button>
+      </div>
+      <div class="pay-panel active" id="panel-upi">
+        <div class="upi-options">
+          <div class="upi-row sel" onclick="selectUpi(this,'gpay')"><span class="upi-logo">🟢</span><div><div class="upi-label">Google Pay</div><div class="upi-id">Pay via GPay UPI</div></div><div class="upi-radio"></div></div>
+          <div class="upi-row" onclick="selectUpi(this,'phonepe')"><span class="upi-logo">🟣</span><div><div class="upi-label">PhonePe</div><div class="upi-id">Pay via PhonePe UPI</div></div><div class="upi-radio"></div></div>
+          <div class="upi-row" onclick="selectUpi(this,'paytm')"><span class="upi-logo">🔵</span><div><div class="upi-label">Paytm</div><div class="upi-id">Pay via Paytm UPI</div></div><div class="upi-radio"></div></div>
+        </div>
+        <div class="or-divider">or enter UPI ID manually</div>
+        <div class="upi-input-row">
+          <input class="upi-id-input" id="custom-upi" placeholder="yourname@upi">
+          <button class="verify-btn" onclick="verifyUpi()">Verify</button>
+        </div>
+      </div>
+      <div class="pay-panel" id="panel-card">
+        <div class="card-form">
+          <input class="card-input" id="card-num"  placeholder="Card Number"    maxlength="19" oninput="formatCard(this)">
+          <input class="card-input" id="card-name" placeholder="Cardholder Name">
+          <div class="card-row">
+            <input class="card-input" id="card-exp" placeholder="MM / YY" maxlength="7" oninput="formatExpiry(this)">
+            <input class="card-input" id="card-cvv" placeholder="CVV" maxlength="3" type="password">
+          </div>
+        </div>
+      </div>
+      <div class="pay-panel" id="panel-netbank">
+        <div class="netbank-options">
+          <div class="nb-opt sel" onclick="selectNb(this)"><span class="nb-icon">🏦</span><div class="nb-label">SBI</div></div>
+          <div class="nb-opt"     onclick="selectNb(this)"><span class="nb-icon">🏦</span><div class="nb-label">HDFC Bank</div></div>
+          <div class="nb-opt"     onclick="selectNb(this)"><span class="nb-icon">🏦</span><div class="nb-label">ICICI Bank</div></div>
+          <div class="nb-opt"     onclick="selectNb(this)"><span class="nb-icon">🏦</span><div class="nb-label">Axis Bank</div></div>
+        </div>
+      </div>
+      <button class="pay-now-btn" id="pay-now-btn" onclick="processPayment()">🔒 Pay Securely</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     MY BOOKINGS PANEL
+═════════════════════════════════ -->
+<div id="bookings-panel">
+  <div class="panel-header">
+    <h3>🎫 My Bookings</h3>
+    <button class="close-btn" onclick="closeBookingsPanel()">×</button>
+  </div>
+  <div class="panel-content" id="bookings-list">
+    <div class="no-bookings">No bookings yet.</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════════
+   FIREBASE
+══════════════════════════════════════════════════ */
+const firebaseConfig={
+  apiKey:"AIzaSyDa-LhnJNCX_fMFYxfMOUFEMnYJlJwY6eM",
+  authDomain:"smart-parking-60cdf.firebaseapp.com",
+  databaseURL:"https://smart-parking-60cdf-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"smart-parking-60cdf",
+};
+firebase.initializeApp(firebaseConfig);
+const db=firebase.database();
+const auth=firebase.auth();
+
+/* ══════════════════════════════════════════════════
+   CONSTANTS
+══════════════════════════════════════════════════ */
+const SLOT_COORDS={
+  slot1:{lat:17.96950,lng:79.59450,label:'North Wing — Slot 1'},
+  slot2:{lat:17.96930,lng:79.59430,label:'North Wing — Slot 2'},
+  slot3:{lat:17.96880,lng:79.59480,label:'South Wing — Slot 3'},
+  slot4:{lat:17.96860,lng:79.59460,label:'South Wing — Slot 4'},
+  slot5:{lat:17.96820,lng:79.59420,label:'Main Gate  — Slot 5'},
+  slot6:{lat:17.96800,lng:79.59400,label:'Main Gate  — Slot 6'},
+};
+const LOCATIONS=[
+  {id:'all',  name:'All Areas',  emoji:'🗺️',slots:[1,2,3,4,5,6],desc:'All 6 slots'},
+  {id:'north',name:'North Wing', emoji:'🔵',slots:[1,2],         desc:'2 slots — near admin block'},
+  {id:'south',name:'South Wing', emoji:'🟠',slots:[3,4],         desc:'2 slots — near labs'},
+  {id:'main', name:'Main Gate',  emoji:'🟢',slots:[5,6],         desc:'2 slots — entrance'},
+];
+const DURATIONS=[
+  {label:'30 min', mins:30,  price:10 },
+  {label:'1 hr',   mins:60,  price:20 },
+  {label:'2 hrs',  mins:120, price:35 },
+  {label:'3 hrs',  mins:180, price:50 },
+  {label:'5 hrs',  mins:300, price:80 },
+  {label:'Full Day',mins:720,price:120},
+];
+
+// Avatar color palette
+const AVATAR_COLORS=[
+  {bg:'#1e1b4b',border:'#6366f1',text:'#a5b4fc',label:'Indigo'},
+  {bg:'#052e16',border:'#16a34a',text:'#4ade80',label:'Green'},
+  {bg:'#1c1917',border:'#d97706',text:'#fbbf24',label:'Amber'},
+  {bg:'#3b0000',border:'#dc2626',text:'#f87171',label:'Red'},
+  {bg:'#0c1a3b',border:'#3b82f6',text:'#93c5fd',label:'Blue'},
+  {bg:'#1a0533',border:'#a855f7',text:'#d8b4fe',label:'Purple'},
+];
+
+/* ══════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════ */
+let currentUser    =null;
+let userProfile    ={};      // from /users/{uid}/profile
+let avatarColorIdx =0;
+let slotData       ={};
+let activeBookings ={};
+let myBookings     ={};
+let selectedLocId  =null;
+let selectedLocName='';
+let visibleSlots   =[1,2,3,4,5,6];
+let activeFilter   ='all';
+let pendingSlot    =null;
+let bookingSlot    =null;
+let selectedDurIdx =1;
+let selectedPayMethod='upi';
+let selectedUpiApp ='gpay';
+let selectedNbBank ='SBI';
+let pendingLocId   =null;
+let pendingLocName ='';
+let pendingLocSlots=[];
+let countdownTimer =null;
+let appInited      =false;
+
+/* ══════════════════════════════════════════════════
+   AUTH
+══════════════════════════════════════════════════ */
+function switchAuthTab(mode){
+  ['login','signup'].forEach(t=>{
+    document.getElementById(`tab-${t}`).classList.toggle('active',t===mode);
+    document.getElementById(`${t}-form`).style.display=t===mode?'flex':'none';
+  });
+  clearAuthError();
+}
+function showAuthError(msg){const el=document.getElementById('auth-error');el.textContent='⚠️ '+msg;el.style.display='block'}
+function clearAuthError(){document.getElementById('auth-error').style.display='none'}
+function setAuthLoading(id,on){
+  const b=document.getElementById(id);
+  b.disabled=on;
+  b.textContent=on?'Please wait…':(id==='login-btn'?'Login →':'Create Account →');
+}
+async function doLogin(){
+  const e=document.getElementById('login-email').value.trim();
+  const p=document.getElementById('login-pass').value;
+  if(!e||!p){showAuthError('Enter email and password.');return}
+  clearAuthError();setAuthLoading('login-btn',true);
+  try{await auth.signInWithEmailAndPassword(e,p);}
+  catch(err){setAuthLoading('login-btn',false);showAuthError(friendlyAuthError(err.code));}
+}
+async function doSignup(){
+  const n=document.getElementById('signup-name').value.trim();
+  const e=document.getElementById('signup-email').value.trim();
+  const p=document.getElementById('signup-pass').value;
+  if(!n){showAuthError('Enter your name.');return}
+  if(!e){showAuthError('Enter your email.');return}
+  if(p.length<6){showAuthError('Password must be at least 6 characters.');return}
+  clearAuthError();setAuthLoading('signup-btn',true);
+  try{
+    const c=await auth.createUserWithEmailAndPassword(e,p);
+    await c.user.updateProfile({displayName:n});
+  }catch(err){setAuthLoading('signup-btn',false);showAuthError(friendlyAuthError(err.code));}
+}
+async function doGuest(){
+  clearAuthError();
+  try{await auth.signInAnonymously();}
+  catch(e){showAuthError('Guest login failed. Enable Anonymous Auth in Firebase Console.');}
+}
+async function doLogout(){
+  stopCountdownTimer();
+  closeModal('profile-modal');
+  await auth.signOut();
+}
+function friendlyAuthError(code){
+  const m={'auth/user-not-found':'No account with this email.','auth/wrong-password':'Incorrect password.',
+   'auth/email-already-in-use':'Email already registered.','auth/weak-password':'Password too weak (min 6 chars).',
+   'auth/invalid-email':'Invalid email address.','auth/too-many-requests':'Too many attempts. Try later.',
+   'auth/network-request-failed':'Network error.'};
+  return m[code]||'Something went wrong. Try again.';
+}
+auth.onAuthStateChanged(user=>{
+  currentUser=user;
+  if(user){
+    document.getElementById('auth-overlay').style.display='none';
+    document.getElementById('app').style.display='none';
+    if(!selectedLocId) showLocationPicker();
+    else showMainApp(user);
+  } else {
+    selectedLocId=null;
+    document.getElementById('auth-overlay').style.display='flex';
+    document.getElementById('location-overlay').style.display='none';
+    document.getElementById('app').style.display='none';
+    ['login-btn','signup-btn'].forEach(id=>{
+      const b=document.getElementById(id);
+      if(b){b.disabled=false;b.textContent=id==='login-btn'?'Login →':'Create Account →';}
+    });
+    stopCountdownTimer();
+  }
+});
+
+/* ══════════════════════════════════════════════════
+   PROFILE MODAL
+══════════════════════════════════════════════════ */
+function buildColorSwatches(){
+  const wrap=document.getElementById('avatar-colors');
+  wrap.innerHTML='';
+  AVATAR_COLORS.forEach((c,i)=>{
+    const sw=document.createElement('div');
+    sw.className=`avatar-color-swatch${i===avatarColorIdx?' selected':''}`;
+    sw.style.background=c.bg;
+    sw.style.border=`3px solid ${i===avatarColorIdx?c.border:'transparent'}`;
+    sw.title=c.label;
+    sw.onclick=()=>{
+      avatarColorIdx=i;
+      buildColorSwatches();
+      applyAvatarColor();
+    };
+    wrap.appendChild(sw);
+  });
+}
+
+function applyAvatarColor(){
+  const c=AVATAR_COLORS[avatarColorIdx];
+  const big=document.getElementById('prof-avatar-big');
+  big.style.background=c.bg;
+  big.style.borderColor=c.border;
+  big.style.color=c.text;
+  // Also update header avatar
+  const hdr=document.getElementById('user-avatar');
+  hdr.style.background=c.bg;
+  hdr.style.borderColor=c.border;
+  hdr.style.color=c.text;
+}
+
+function openProfileModal(){
+  if(!currentUser) return;
+  const isGuest=currentUser.isAnonymous;
+  const name=currentUser.displayName||(isGuest?'Guest':currentUser.email?.split('@')[0])||'User';
+
+  // Populate avatar section
+  document.getElementById('prof-avatar-big').textContent=isGuest?'👤':name[0].toUpperCase();
+  document.getElementById('prof-display-name').textContent=userProfile.displayName||name;
+  document.getElementById('prof-email').textContent=isGuest?'Signed in as Guest':currentUser.email||'—';
+  const typeEl=document.getElementById('prof-account-type');
+  typeEl.textContent=isGuest?'Guest Account':'Registered Account';
+  typeEl.className='profile-account-type '+(isGuest?'guest':'registered');
+
+  // Populate form fields
+  document.getElementById('prof-name-input').value=userProfile.displayName||name;
+  document.getElementById('prof-name-input').disabled=isGuest; // guests can't change name in auth
+  document.getElementById('prof-email-input').value=currentUser.email||'—';
+  document.getElementById('prof-vehicle').value=userProfile.vehicle||'';
+  document.getElementById('prof-phone').value=userProfile.phone||'';
+  document.getElementById('prof-dept').value=userProfile.department||'';
+
+  // Color picker
+  avatarColorIdx=userProfile.avatarColor||0;
+  buildColorSwatches();
+  applyAvatarColor();
+
+  document.getElementById('prof-save-msg').textContent='';
+  document.getElementById('prof-save-msg').className='profile-save-msg';
+  openModal('profile-modal');
+}
+
+async function saveProfile(){
+  if(!currentUser) return;
+  const btn=document.getElementById('prof-save-btn');
+  const msg=document.getElementById('prof-save-msg');
+  btn.disabled=true;
+  btn.textContent='Saving…';
+  msg.textContent='';
+  msg.className='profile-save-msg';
+
+  const newName    =document.getElementById('prof-name-input').value.trim();
+  const newVehicle =document.getElementById('prof-vehicle').value.trim();
+  const newPhone   =document.getElementById('prof-phone').value.trim();
+  const newDept    =document.getElementById('prof-dept').value.trim();
+
+  if(!newName&&!currentUser.isAnonymous){
+    msg.textContent='Name cannot be empty.';
+    msg.className='profile-save-msg err';
+    btn.disabled=false;btn.textContent='💾 Save Changes';
+    return;
+  }
+
+  try{
+    // Update Firebase Auth display name (not for guests)
+    if(!currentUser.isAnonymous && newName && newName!==currentUser.displayName){
+      await currentUser.updateProfile({displayName:newName});
+    }
+
+    // Save extended profile to Realtime Database /users/{uid}/profile
+    const profileData={
+      displayName: newName||currentUser.displayName||'User',
+      vehicle:     newVehicle,
+      phone:       newPhone,
+      department:  newDept,
+      avatarColor: avatarColorIdx,
+      updatedAt:   Date.now(),
+    };
+    await db.ref(`/users/${currentUser.uid}/profile`).set(profileData);
+    userProfile={...profileData};
+
+    // Update header immediately
+    const displayName=newName||(currentUser.isAnonymous?'Guest':'User');
+    document.getElementById('user-name').textContent=displayName;
+    document.getElementById('user-avatar').textContent=currentUser.isAnonymous?'👤':displayName[0].toUpperCase();
+    document.getElementById('prof-display-name').textContent=displayName;
+    applyAvatarColor();
+
+    msg.textContent='✅ Profile saved successfully!';
+    msg.className='profile-save-msg ok';
+    showToast('✅ Profile updated!','success');
+  }catch(e){
+    msg.textContent='❌ Save failed: '+e.message;
+    msg.className='profile-save-msg err';
+  }finally{
+    btn.disabled=false;
+    btn.textContent='💾 Save Changes';
+  }
+}
+
+// Load profile from Firebase when user logs in
+async function loadUserProfile(uid){
+  try{
+    const snap=await db.ref(`/users/${uid}/profile`).get();
+    if(snap.exists()){
+      userProfile=snap.val();
+      // Apply saved avatar color
+      avatarColorIdx=userProfile.avatarColor||0;
+      applyAvatarColor();
+      // Update display name in header if saved
+      if(userProfile.displayName){
+        document.getElementById('user-name').textContent=userProfile.displayName;
+        document.getElementById('user-avatar').textContent=
+          currentUser.isAnonymous?'👤':userProfile.displayName[0].toUpperCase();
+      }
+    } else {
+      userProfile={};
+    }
+  }catch(e){ userProfile={}; }
+}
+
+/* ══════════════════════════════════════════════════
+   LOCATION PICKER
+══════════════════════════════════════════════════ */
+function showLocationPicker(){
+  document.getElementById('location-overlay').style.display='flex';
+  buildLocCards();
+}
+function buildLocCards(){
+  const grid=document.getElementById('loc-cards');
+  grid.innerHTML='';
+  LOCATIONS.forEach(loc=>{
+    const card=document.createElement('div');
+    card.className='loc-card';
+    card.id=`lc-${loc.id}`;
+    card.innerHTML=`<div class="lc-emoji">${loc.emoji}</div><div class="lc-name">${loc.name}</div><div class="lc-slots">${loc.desc}</div>`;
+    card.onclick=()=>selectPredefinedLocation(loc,card);
+    grid.appendChild(card);
+  });
+  document.getElementById('loc-confirm-btn').disabled=true;
+  document.getElementById('loc-confirm-btn').textContent='Select a location to continue';
+  document.getElementById('loc-search-input').value='';
+  document.getElementById('loc-custom-result').style.display='none';
+}
+function selectPredefinedLocation(loc,cardEl){
+  document.querySelectorAll('.loc-card').forEach(c=>c.classList.remove('selected'));
+  document.getElementById('loc-custom-result').style.display='none';
+  cardEl.classList.add('selected');
+  pendingLocId=loc.id; pendingLocName=loc.name; pendingLocSlots=loc.slots;
+  document.getElementById('loc-confirm-btn').disabled=false;
+  document.getElementById('loc-confirm-btn').textContent=`Continue to ${loc.name} →`;
+}
+function handleLocSearch(val){
+  const q=val.trim();
+  if(!q){document.getElementById('loc-custom-result').style.display='none';return}
+  const match=LOCATIONS.find(l=>l.name.toLowerCase().includes(q.toLowerCase()));
+  if(match){
+    selectPredefinedLocation(match,document.getElementById(`lc-${match.id}`));
+    document.getElementById('loc-custom-result').style.display='none';
+    return;
+  }
+  document.querySelectorAll('.loc-card').forEach(c=>c.classList.remove('selected'));
+  document.getElementById('lcr-name-text').textContent=q;
+  document.getElementById('loc-custom-result').style.display='flex';
+  pendingLocId='custom'; pendingLocName=q; pendingLocSlots=[1,2,3,4,5,6];
+  document.getElementById('loc-confirm-btn').disabled=false;
+  document.getElementById('loc-confirm-btn').textContent=`Continue to "${q}" →`;
+}
+function selectCustomLocation(){
+  document.querySelectorAll('.loc-card').forEach(c=>c.classList.remove('selected'));
+  document.getElementById('loc-confirm-btn').disabled=false;
+  document.getElementById('loc-confirm-btn').textContent=`Continue to "${pendingLocName}" →`;
+}
+function confirmLocation(){
+  if(!pendingLocId) return;
+  selectedLocId=pendingLocId; selectedLocName=pendingLocName; visibleSlots=pendingLocSlots;
+  document.getElementById('location-overlay').style.display='none';
+  showMainApp(currentUser);
+}
+function changeLocation(){
+  document.getElementById('location-overlay').style.display='flex';
+  document.getElementById('app').style.display='none';
+  buildLocCards();
+}
+
+/* ══════════════════════════════════════════════════
+   MAIN APP
+══════════════════════════════════════════════════ */
+function showMainApp(user){
+  document.getElementById('app').style.display='block';
+  const isGuest=user.isAnonymous;
+  const name=userProfile.displayName||user.displayName||(isGuest?'Guest':user.email?.split('@')[0])||'User';
+  document.getElementById('user-name').textContent=name;
+  document.getElementById('user-avatar').textContent=isGuest?'👤':name[0].toUpperCase();
+  applyAvatarColor();
+  document.getElementById('header-loc-name').textContent=selectedLocName;
+  document.getElementById('lc-name').textContent=selectedLocName;
+  document.getElementById('lc-sub').textContent=`Showing ${visibleSlots.length} slot${visibleSlots.length!==1?'s':''} at ${selectedLocName}`;
+  if(!appInited){
+    appInited=true;
+    buildSlots();
+    buildDurationGrid();
+    startFirebaseListeners();
+    startCountdownTimer();
+  } else {
+    applyVisibility();
+    updateSummary();
+  }
+  loadUserProfile(user.uid);
+  loadMyBookings(user.uid);
+}
+
+/* ══════════════════════════════════════════════════
+   SLOTS
+══════════════════════════════════════════════════ */
+function buildSlots(){
+  const grid=document.getElementById('slots-grid');
+  grid.innerHTML='';
+  const zoneMap={1:'🔵 North Wing',2:'🔵 North Wing',3:'🟠 South Wing',4:'🟠 South Wing',5:'🟢 Main Gate',6:'🟢 Main Gate'};
+  const zoneColor={1:'#3b82f6',2:'#3b82f6',3:'#f97316',4:'#f97316',5:'#22c55e',6:'#22c55e'};
+  for(let i=1;i<=6;i++){
+    const div=document.createElement('div');
+    div.className='slot-card loading';
+    div.id=`card-${i}`;
+    div.innerHTML=`
+      <div class="slot-zone-tag" style="border:1px solid ${zoneColor[i]}33;color:${zoneColor[i]}">${zoneMap[i]}</div>
+      <div class="slot-number">Slot ${i}</div>
+      <div class="slot-icon"    id="icon-${i}">⏳</div>
+      <div class="slot-status"  id="sts-${i}">Connecting…</div>
+      <div class="time-left"    id="tl-${i}" style="display:none"></div>
+      <div class="slot-distance" id="dist-${i}"></div>
+      <button class="book-btn" onclick="openBookingModal(${i})">🎫 Book Slot</button>
+      <button class="dir-btn"  onclick="handleDirections(event,${i})">📍 Directions</button>
+      <div class="slot-bar"></div>`;
+    grid.appendChild(div);
+  }
+}
+function setFilter(f){
+  activeFilter=f;
+  ['all','empty','reserved','filled'].forEach(ff=>document.getElementById(`ftab-${ff}`).classList.toggle('active',ff===f));
+  applyVisibility();
+}
+function getSlotState(i){
+  if(hasMyActiveBooking(i)) return 'mine';
+  const ab=activeBookings[`slot${i}`];
+  if(ab&&ab.expiresAt>Date.now()) return 'reserved';
+  const sd=slotData[`slot${i}`];
+  if(!sd) return 'loading';
+  return sd.status==='filled'?'filled':'empty';
+}
+function applyVisibility(){
+  for(let i=1;i<=6;i++){
+    const card=document.getElementById(`card-${i}`);
+    if(!card) continue;
+    const inLoc=visibleSlots.includes(i);
+    const state=getSlotState(i);
+    const inFilter=activeFilter==='all'||(activeFilter==='reserved'&&(state==='reserved'||state==='mine'))||activeFilter===state;
+    card.classList.toggle('hidden',!inLoc||!inFilter);
+  }
+}
+function updateAllSlotCards(){
+  for(let i=1;i<=6;i++){
+    const card=document.getElementById(`card-${i}`);
+    if(!card) continue;
+    const state=getSlotState(i);
+    const wasHidden=card.classList.contains('hidden');
+    card.className=`slot-card ${state}`;
+    if(wasHidden) card.classList.add('hidden');
+    const iconEl=document.getElementById(`icon-${i}`);
+    const stsEl =document.getElementById(`sts-${i}`);
+    const tlEl  =document.getElementById(`tl-${i}`);
+    const distEl=document.getElementById(`dist-${i}`);
+    const sd    =slotData[`slot${i}`];
+    const dist  =sd?parseInt(sd.distance)||999:999;
+    if(state==='mine')    {iconEl.textContent='🎫';stsEl.textContent='MY BOOKING';tlEl.style.display='inline-block';tlEl.textContent=formatTimeLeft(i,true);}
+    else if(state==='reserved'){iconEl.textContent='⏱️';stsEl.textContent='RESERVED';tlEl.style.display='inline-block';tlEl.textContent=formatTimeLeft(i,false);}
+    else if(state==='filled') {iconEl.textContent='🚗';stsEl.textContent='FILLED';tlEl.style.display='none';}
+    else if(state==='empty')  {iconEl.textContent='✅';stsEl.textContent='AVAILABLE';tlEl.style.display='none';}
+    else                      {iconEl.textContent='⏳';stsEl.textContent='Connecting…';tlEl.style.display='none';}
+    distEl.textContent=dist<900?dist+' cm':'';
+    const ab=activeBookings[`slot${i}`];
+    if(ab&&ab.expiresAt){
+      const minsLeft=(ab.expiresAt-Date.now())/60000;
+      tlEl.classList.toggle('urgent',minsLeft<5&&minsLeft>0);
+      if(minsLeft<=0) updateAllSlotCards();
+    } else tlEl.classList.remove('urgent');
+  }
+  applyVisibility();
+  updateSummary();
+}
+function formatTimeLeft(slotNum,isMine){
+  let expiresAt=null;
+  if(isMine){
+    const bk=Object.values(myBookings).find(b=>b.slot===slotNum&&b.status==='active'&&b.expiresAt>Date.now());
+    if(bk) expiresAt=bk.expiresAt;
+  } else {
+    const ab=activeBookings[`slot${slotNum}`];
+    if(ab) expiresAt=ab.expiresAt;
+  }
+  if(!expiresAt) return '';
+  const ms=expiresAt-Date.now();
+  if(ms<=0) return 'Expired';
+  const totalMins=Math.ceil(ms/60000);
+  if(totalMins>=60){const h=Math.floor(totalMins/60),m=totalMins%60;return m>0?`${h}h ${m}m left`:`${h}h left`;}
+  return `${totalMins}m left`;
+}
+function startCountdownTimer(){
+  stopCountdownTimer();
+  countdownTimer=setInterval(()=>{
+    for(let i=1;i<=6;i++){
+      const tlEl=document.getElementById(`tl-${i}`);
+      if(!tlEl||tlEl.style.display==='none') continue;
+      const state=getSlotState(i);
+      if(state==='mine'||state==='reserved'){
+        tlEl.textContent=formatTimeLeft(i,state==='mine');
+        const ab=activeBookings[`slot${i}`];
+        if(ab&&ab.expiresAt){
+          const minsLeft=(ab.expiresAt-Date.now())/60000;
+          tlEl.classList.toggle('urgent',minsLeft<5&&minsLeft>0);
+          if(minsLeft<=0) updateAllSlotCards();
+        }
+      }
+    }
+    renderBookingsList();
+  },30000);
+}
+function stopCountdownTimer(){if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null;}}
+function updateSummary(){
+  let total=0,free=0,reserved=0,filled=0;
+  visibleSlots.forEach(i=>{
+    total++;
+    const s=getSlotState(i);
+    if(s==='empty') free++;
+    else if(s==='filled') filled++;
+    else if(s==='reserved'||s==='mine') reserved++;
+  });
+  document.getElementById('stat-total').textContent    =total;
+  document.getElementById('stat-available').textContent=free;
+  document.getElementById('stat-reserved').textContent =reserved;
+  document.getElementById('stat-filled').textContent   =filled;
+}
+
+/* ══════════════════════════════════════════════════
+   FIREBASE LISTENERS
+══════════════════════════════════════════════════ */
+function startFirebaseListeners(){
+  db.ref('/parking').on('value',snap=>{
+    document.getElementById('error-banner').style.display='none';
+    const data=snap.val();if(!data) return;
+    slotData=data;updateAllSlotCards();
+    document.getElementById('last-update').textContent='Updated: '+new Date().toLocaleTimeString();
+  },()=>{document.getElementById('error-banner').style.display='block'});
+  db.ref('/active_bookings').on('value',snap=>{
+    activeBookings=snap.val()||{};updateAllSlotCards();
+  });
+}
+
+/* ══════════════════════════════════════════════════
+   MY BOOKINGS
+══════════════════════════════════════════════════ */
+function loadMyBookings(uid){
+  db.ref(`/bookings/${uid}`).on('value',snap=>{
+    myBookings=snap.val()||{};updateAllSlotCards();renderBookingsList();
+  });
+}
+function hasMyActiveBooking(slotNum){
+  return Object.values(myBookings).some(b=>b.slot===slotNum&&b.status==='active'&&b.expiresAt>Date.now());
+}
+function renderBookingsList(){
+  const container=document.getElementById('bookings-list');
+  const all=Object.values(myBookings).sort((a,b)=>b.bookedAt-a.bookedAt);
+  if(!all.length){container.innerHTML='<div class="no-bookings">No bookings yet.<br><span style="font-size:12px;color:#4b5e80">Book a slot to see it here.</span></div>';return;}
+  container.innerHTML=all.map(b=>{
+    const isActive=b.status==='active'&&b.expiresAt>Date.now();
+    const bookedAt=new Date(b.bookedAt).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const expiresAt=new Date(b.expiresAt).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    let countdown='';
+    if(isActive){const ms=b.expiresAt-Date.now();const tm=Math.ceil(ms/60000);countdown=tm>=60?`⏱ ${Math.floor(tm/60)}h ${tm%60}m remaining`:`⏱ ${tm}m remaining`;}
+    return `<div class="booking-card">
+      <div class="bk-header"><div class="bk-slot-name">${b.slotLabel||'Slot '+b.slot}</div><div class="bk-status ${isActive?'active':'expired'}">${isActive?'Active':'Expired'}</div></div>
+      <div class="bk-row"><span class="bk-tag">⏱ ${b.duration}</span><span class="bk-tag">📅 ${bookedAt}</span>${isActive?`<span class="bk-tag">Until ${expiresAt}</span>`:''}</div>
+      ${countdown?`<div class="bk-countdown">${countdown}</div>`:''}
+      <div class="bk-amount">₹${b.amount}</div>
+      <div class="bk-txn">Txn: ${b.txnId||'—'}</div>
+    </div>`;
+  }).join('');
+}
+function openBookingsPanel(){document.getElementById('bookings-panel').classList.add('open')}
+function closeBookingsPanel(){document.getElementById('bookings-panel').classList.remove('open')}
+
+/* ══════════════════════════════════════════════════
+   DIRECTIONS
+══════════════════════════════════════════════════ */
+function openMaps(slotNum,lat,lng){
+  const dest=SLOT_COORDS[`slot${slotNum}`];
+  if(!dest){showToast('⚠️ No coordinates.','warn');return}
+  const url=lat&&lng
+    ?`https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${dest.lat},${dest.lng}&travelmode=driving`
+    :`https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lng}&travelmode=driving`;
+  window.open(url,'_blank');showToast('🗺️ Opening Maps for '+dest.label,'success');pendingSlot=null;
+}
+function handleDirections(e,slotNum){
+  e.stopPropagation();
+  if(!navigator.geolocation){openMaps(slotNum,null,null);return}
+  pendingSlot=slotNum;
+  navigator.geolocation.getCurrentPosition(
+    pos=>{document.getElementById('loc-banner').style.display='none';openMaps(slotNum,pos.coords.latitude,pos.coords.longitude);},
+    err=>{if(err.code===1){document.getElementById('loc-banner').style.display='flex';showToast('📍 Location blocked.','warn');}else openMaps(slotNum,null,null);},
+    {timeout:8000,enableHighAccuracy:true}
+  );
+}
+function requestLocationAndOpen(){
+  if(!pendingSlot) return;
+  document.getElementById('loc-banner').style.display='none';
+  navigator.geolocation.getCurrentPosition(
+    pos=>openMaps(pendingSlot,pos.coords.latitude,pos.coords.longitude),
+    ()=>openMaps(pendingSlot,null,null),
+    {timeout:8000,enableHighAccuracy:true}
+  );
+}
+
+/* ══════════════════════════════════════════════════
+   BOOKING MODAL
+══════════════════════════════════════════════════ */
+function buildDurationGrid(){
+  const grid=document.getElementById('duration-grid');grid.innerHTML='';
+  DURATIONS.forEach((d,idx)=>{
+    const div=document.createElement('div');
+    div.className=`dur-opt${idx===selectedDurIdx?' selected':''}`;
+    div.innerHTML=`<div class="dur-time">${d.label}</div><div class="dur-price">₹${d.price}</div>`;
+    div.onclick=()=>selectDuration(idx);
+    grid.appendChild(div);
+  });
+  updateBookingSummary();
+}
+function selectDuration(idx){
+  document.querySelectorAll('.dur-opt').forEach((el,i)=>el.classList.toggle('selected',i===idx));
+  selectedDurIdx=idx;updateBookingSummary();
+}
+function updateBookingSummary(){
+  const d=DURATIONS[selectedDurIdx];
+  document.getElementById('bs-dur').textContent='₹'+d.price;
+  document.getElementById('bs-fee').textContent='₹'+d.price;
+  document.getElementById('bs-total').textContent='₹'+d.price;
+}
+function openBookingModal(slotNum){
+  if(!currentUser){showToast('Please log in to book.','warn');return}
+  const s=getSlotState(slotNum);
+  if(s==='filled')  {showToast('🚗 Slot is occupied by a vehicle.','warn');return}
+  if(s==='reserved'){showToast('⏱ This slot is already reserved.','warn');return}
+  if(s==='mine')    {showToast('🎫 You already booked this slot!','warn');return}
+  bookingSlot=slotNum;
+  const zoneMap={1:'🔵 North Wing',2:'🔵 North Wing',3:'🟠 South Wing',4:'🟠 South Wing',5:'🟢 Main Gate',6:'🟢 Main Gate'};
+  document.getElementById('bk-slot-name').textContent='Slot '+slotNum;
+  document.getElementById('bk-slot-zone').textContent=zoneMap[slotNum]||'';
+  openModal('booking-modal');
+}
+
+/* ══════════════════════════════════════════════════
+   PAYMENT
+══════════════════════════════════════════════════ */
+function openPaymentModal(){
+  if(!bookingSlot) return;
+  const d=DURATIONS[selectedDurIdx];
+  document.getElementById('pay-amount-display').textContent='₹'+d.price;
+  document.getElementById('pay-slot-display').textContent=`Slot ${bookingSlot} · ${d.label}`;
+  document.getElementById('pay-now-btn').textContent=`🔒 Pay ₹${d.price} Securely`;
+  document.getElementById('pay-processing').classList.remove('show');
+  document.getElementById('pay-success').classList.remove('show');
+  document.getElementById('pay-form-area').style.display='block';
+  closeModal('booking-modal');openModal('payment-modal');
+}
+function switchPayTab(tab,btn){
+  selectedPayMethod=tab;
+  document.querySelectorAll('.pay-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+  document.querySelectorAll('.pay-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById(`panel-${tab}`).classList.add('active');
+}
+function selectUpi(row,app){document.querySelectorAll('.upi-row').forEach(r=>r.classList.remove('sel'));row.classList.add('sel');selectedUpiApp=app;}
+function selectNb(opt){document.querySelectorAll('.nb-opt').forEach(o=>o.classList.remove('sel'));opt.classList.add('sel');selectedNbBank=opt.querySelector('.nb-label').textContent;}
+function verifyUpi(){const v=document.getElementById('custom-upi').value.trim();if(!v){showToast('Enter a UPI ID.','warn');return}showToast('✅ UPI verified: '+v,'success');}
+function formatCard(input){let v=input.value.replace(/\D/g,'').slice(0,16);input.value=v.replace(/(.{4})/g,'$1 ').trim();}
+function formatExpiry(input){let v=input.value.replace(/\D/g,'').slice(0,4);if(v.length>2)v=v.slice(0,2)+' / '+v.slice(2);input.value=v;}
+
+async function processPayment(){
+  const d=DURATIONS[selectedDurIdx];const slot=bookingSlot;
+  document.getElementById('pay-form-area').style.display='none';
+  document.getElementById('pay-processing').classList.add('show');
+  await new Promise(r=>setTimeout(r,2500));
+  const now=Date.now();const expiresAt=now+d.mins*60*1000;
+  const txnId='TXN'+Math.random().toString(36).slice(2,10).toUpperCase();
+  const bookingId='BK'+Math.random().toString(36).slice(2,10).toUpperCase();
+  // Include vehicle number from profile
+  const vehicle=userProfile.vehicle||'';
+  const booking={
+    bookingId,txnId,slot,slotLabel:`Slot ${slot}`,
+    locationName:selectedLocName,duration:d.label,durationMins:d.mins,
+    amount:d.price,status:'active',bookedAt:now,expiresAt,
+    payMethod:selectedPayMethod,
+    payApp:selectedPayMethod==='upi'?selectedUpiApp:selectedPayMethod==='netbank'?selectedNbBank:'card',
+    vehicle,
+  };
+  try{await db.ref(`/bookings/${currentUser.uid}/${bookingId}`).set(booking);}catch(e){}
+  try{await db.ref(`/active_bookings/slot${slot}`).set({expiresAt,duration:d.label,bookedBy:currentUser.uid,bookingId,locationName:selectedLocName});}catch(e){}
+  document.getElementById('pay-processing').classList.remove('show');
+  document.getElementById('succ-txn-id').textContent='Transaction ID: '+txnId;
+  const expTime=new Date(expiresAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const expDate=new Date(expiresAt).toLocaleDateString([],{month:'short',day:'numeric'});
+  document.getElementById('succ-details').innerHTML=`
+    <div class="succ-row"><span class="sr-label">Slot</span><span class="sr-val">Slot ${slot} — ${selectedLocName}</span></div>
+    <div class="succ-row"><span class="sr-label">Duration</span><span class="sr-val">${d.label}</span></div>
+    <div class="succ-row"><span class="sr-label">Amount</span><span class="sr-val">₹${d.price}</span></div>
+    ${vehicle?`<div class="succ-row"><span class="sr-label">Vehicle</span><span class="sr-val">${vehicle}</span></div>`:''}
+    <div class="succ-row"><span class="sr-label">Valid Until</span><span class="sr-val">${expTime}, ${expDate}</span></div>
+    <div class="succ-row"><span class="sr-label">Payment Via</span><span class="sr-val">${booking.payApp.toUpperCase()}</span></div>`;
+  document.getElementById('pay-success').classList.add('show');
+  showToast('🎉 Booking confirmed! Slot '+slot,'success');
+}
+function closePaymentSuccess(){closeModal('payment-modal');bookingSlot=null;}
+
+/* ══════════════════════════════════════════════════
+   MODAL UTILS
+══════════════════════════════════════════════════ */
+function openModal(id){document.getElementById(id).classList.add('open');document.body.style.overflow='hidden'}
+function closeModal(id){document.getElementById(id).classList.remove('open');document.body.style.overflow=''}
+document.querySelectorAll('.modal-overlay').forEach(ov=>{
+  ov.addEventListener('click',e=>{if(e.target===ov)closeModal(ov.id)});
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    ['profile-modal','booking-modal','payment-modal'].forEach(id=>closeModal(id));
+    closeBookingsPanel();
+  }
+});
+
+/* ══════════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════════ */
+let toastTimer=null;
+function showToast(msg,type=''){
+  const t=document.getElementById('toast');t.textContent=msg;t.className='show '+type;
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.className=''},3200);
+}
+
+// Build color swatches on page load for profile modal
+buildColorSwatches();
+</script>
+</body>
+</html>

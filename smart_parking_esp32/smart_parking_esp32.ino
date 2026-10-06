@@ -1,219 +1,168 @@
 /* =========================================================================
-   SMART PARKING SLOT FINDER  -  ESP32 Firmware  (DEMO MODE)
+   SMART PARKING SLOT FINDER  -  ESP32 Firmware  v2 (fixed)
    -------------------------------------------------------------------------
-   1 x HC-SR04 ultrasonic sensor  ->  Slot 1 (live)
-   Slots 2-6  ->  hardcoded demo states written to Firebase on boot
-
-   Wiring (no resistors — acceptable for short demo use):
-     HC-SR04 VCC  -> ESP32 VIN  (5 V)
-     HC-SR04 GND  -> ESP32 GND
-     HC-SR04 Trig -> GPIO 13
-     HC-SR04 Echo -> GPIO 34   ← NOTE: GPIO34 is input-only; 5 V echo
-                                  signal is slightly over spec but works
-                                  fine for demo. Add a 1kΩ/2kΩ divider
-                                  for a production build.
-
-   LIBRARY REQUIRED (install via Arduino Library Manager):
-     "Firebase Arduino Client Library for ESP8266 and ESP32"  by Mobizt
+   Fixes applied:
+   - Credentials moved to secrets.h (add to .gitignore)
+   - NTP real timestamp instead of millis()
+   - Consistent all-timeout handling (holds previous state)
    ========================================================================= */
 
 #include <WiFi.h>
+#include <time.h>
 #include <Firebase_ESP_Client.h>
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
+#include "secrets.h"   // <-- put credentials there, never commit this file
 
-
-/* ----------------------- 1. USER CONFIGURATION ------------------------- */
-
-#define WIFI_SSID       "sanathraag"
-#define WIFI_PASSWORD   "sanathraag"
-
-#define API_KEY      "AIzaSyCagoL_9_uaeIcqJA8GxYSvClHi1MskSl4"
-#define DATABASE_URL "https://finialsmartparking-default-rtdb.asia-southeast1.firebasedatabase.app"
-
-
-/* ----------------------- 2. REAL SENSOR PINS (Slot 1 only) ------------- */
-
+/* ── PINS ──────────────────────────────────────────── */
 #define TRIG_PIN   13
 #define ECHO_PIN   34
 
-
-/* ----------------------- 3. DEMO STATES FOR SLOTS 2-6 ------------------ */
-//   Index 0 = Slot 2,  Index 1 = Slot 3, ... Index 4 = Slot 6
-//   true  = FILLED,  false = empty
+/* ── DEMO STATES slots 2-6 (index 0 = slot 2) ──────── */
 const bool DEMO_FILLED[5] = { true, false, true, true, false };
-//                             Slot2  Slot3  Slot4  Slot5  Slot6
 
+/* ── DETECTION TUNING ───────────────────────────────── */
+const float        ENTER_CM     = 20.0;
+const float        EXIT_CM      = 25.0;
+const int          EXIT_CONFIRM = 4;
+const int          SAMPLES      = 5;
+const long         ECHO_TIMEOUT = 25000;
+const unsigned long CYCLE_MS   = 800;
 
-/* ----------------------- 4. DETECTION TUNING (Slot 1) ------------------ */
+/* ── NTP ─────────────────────────────────────────────── */
+const char* NTP_SERVER   = "pool.ntp.org";
+const long  GMT_OFFSET   = 19800;   // IST = UTC+5:30 in seconds
+const int   DAYLIGHT     = 0;
 
-const float ENTER_CM      = 20.0;  // below this -> FILLED  (raised for hand detection)
-const float EXIT_CM       = 25.0;  // above this counts as "looks empty"
-const int   EXIT_CONFIRM  = 4;     // need this many consecutive "empty" readings
-                                    // before actually switching to empty — stops
-                                    // a few bad bounces from flipping the state
-
-const int   SAMPLES       = 5;     // median filter window (odd)
-const long  ECHO_TIMEOUT  = 25000; // µs (~4 m max range)
-const unsigned long CYCLE_MS = 800;
-
-
-/* ----------------------- 5. GLOBALS ------------------------------------ */
-
+/* ── GLOBALS ─────────────────────────────────────────── */
 FirebaseData   fbdo;
 FirebaseAuth   auth;
 FirebaseConfig config;
 
-bool slot1Filled  = false;
-int  exitCounter  = 0;    // consecutive "looks empty" readings
-bool firstRun     = true;
+bool slot1Filled = false;
+int  exitCounter = 0;
+bool firstRun    = true;
 
-
-/* ----------------------- 6. HELPERS ------------------------------------ */
-
-// Returns distance in cm, or -1 on timeout.
-float readOnce() {
+/* ── HELPERS ─────────────────────────────────────────── */
+float readOnce(){
+  digitalWrite(TRIG_PIN, LOW);  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH); delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-
   long dur = pulseIn(ECHO_PIN, HIGH, ECHO_TIMEOUT);
-  if (dur == 0) return -1.0;
+  if(dur == 0) return -1.0;
   return dur * 0.0343 / 2.0;
 }
 
-// Median of valid SAMPLES readings.
-// Returns -1 if ALL readings timed out (caller will keep previous state).
-float readDistance() {
+// FIX: returns -1 if ALL readings timed out → caller holds previous state
+// No more forced-FILLED on timeout — that was wrong behaviour
+float readDistance(){
   float v[SAMPLES];
   int   n = 0;
-
-  for (int i = 0; i < SAMPLES; i++) {
+  for(int i=0; i<SAMPLES; i++){
     float d = readOnce();
-    if (d > 0) v[n++] = d;
+    if(d > 0) v[n++] = d;
     delay(15);
   }
-
-  if (n == 0) return 1.0;    // all timeouts -> object too close (blind zone) -> treat as FILLED
-
-  // insertion sort
-  for (int i = 1; i < n; i++) {
-    float key = v[i];
-    int   j   = i - 1;
-    while (j >= 0 && v[j] > key) { v[j + 1] = v[j]; j--; }
-    v[j + 1] = key;
+  if(n == 0) return -1.0;  // FIX: signal "uncertain" — do not force FILLED
+  for(int i=1; i<n; i++){
+    float key=v[i]; int j=i-1;
+    while(j>=0 && v[j]>key){ v[j+1]=v[j]; j--; }
+    v[j+1]=key;
   }
-  return v[n / 2];
+  return v[n/2];
 }
 
-// Returns the new state for Slot 1.
-// dist == -1 means uncertain (all readings timed out) -> keep current state.
-bool decideState(bool wasFilled, float dist) {
-  if (dist < ENTER_CM) {
-    // Clearly something close -> FILLED, reset exit counter
-    exitCounter = 0;
-    return true;
+bool decideState(bool wasFilled, float dist){
+  if(dist < 0){
+    // All readings timed out — uncertain, hold previous state
+    return wasFilled;
   }
-
-  if (dist > EXIT_CM) {
-    // Looks empty — but only commit after EXIT_CONFIRM consecutive readings
+  if(dist < ENTER_CM){ exitCounter=0; return true; }
+  if(dist > EXIT_CM){
     exitCounter++;
-    if (exitCounter >= EXIT_CONFIRM) {
-      return false;
-    }
-    return wasFilled;   // not enough evidence yet — hold state
+    if(exitCounter >= EXIT_CONFIRM) return false;
+    return wasFilled;
   }
-
-  // In the dead zone between ENTER and EXIT -> hold state, reset counter
-  exitCounter = 0;
+  exitCounter=0;
   return wasFilled;
 }
 
-void pushSlot(int slotNumber, bool filled, float dist) {
-  String path = "/parking/slot" + String(slotNumber);
+// FIX: use real Unix timestamp from NTP, not millis()
+long getRealTimestamp(){
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)) return (long)(millis()/1000);  // fallback if NTP not ready
+  return (long)mktime(&timeinfo);
+}
 
+void pushSlot(int slotNumber, bool filled, float dist){
+  String path = "/parking/slot" + String(slotNumber);
   FirebaseJson json;
   json.set("status",   filled ? "filled" : "empty");
-  json.set("distance", (int)dist);
+  json.set("distance", dist > 0 ? (int)dist : -1);
   json.set("slot",     slotNumber);
-  json.set("updated",  (int)millis());
-
-  if (Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)) {
-    Serial.printf("  slot%d -> %s (%.0f cm)\n",
-                  slotNumber, filled ? "FILLED" : "empty", dist);
+  json.set("updated",  getRealTimestamp());  // FIX: real Unix timestamp
+  if(Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)){
+    Serial.printf("  slot%d -> %s (%.0f cm)\n", slotNumber, filled?"FILLED":"empty", dist);
   } else {
-    Serial.printf("  slot%d write FAILED: %s\n",
-                  slotNumber, fbdo.errorReason().c_str());
+    Serial.printf("  slot%d FAILED: %s\n", slotNumber, fbdo.errorReason().c_str());
   }
 }
 
-
-/* ----------------------- 7. SETUP -------------------------------------- */
-
-void setup() {
+/* ── SETUP ───────────────────────────────────────────── */
+void setup(){
   Serial.begin(115200);
   delay(300);
-
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   digitalWrite(TRIG_PIN, LOW);
 
-  // --- WiFi ---
+  // WiFi — credentials come from secrets.h
   Serial.printf("Connecting to WiFi: %s\n", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(400);
-  }
+  while(WiFi.status() != WL_CONNECTED){ Serial.print("."); delay(400); }
   Serial.printf("\nWiFi connected. IP: %s\n", WiFi.localIP().toString().c_str());
 
-  // --- Firebase ---
-  config.api_key      = API_KEY;
-  config.database_url = DATABASE_URL;
-
-  if (Firebase.signUp(&config, &auth, "", "")) {
-    Serial.println("Firebase sign-in OK");
-  } else {
-    Serial.printf("Firebase sign-in error: %s\n",
-                  config.signer.signupError.message.c_str());
+  // NTP sync — FIX: so getRealTimestamp() returns a real time
+  configTime(GMT_OFFSET, DAYLIGHT, NTP_SERVER);
+  Serial.print("Syncing NTP");
+  struct tm timeinfo;
+  for(int i=0; i<20; i++){
+    if(getLocalTime(&timeinfo)){ Serial.println(" OK"); break; }
+    Serial.print("."); delay(500);
   }
 
+  // Firebase
+  config.api_key      = FIREBASE_API_KEY;      // from secrets.h
+  config.database_url = FIREBASE_DATABASE_URL;  // from secrets.h
+  if(Firebase.signUp(&config, &auth, "", "")){
+    Serial.println("Firebase anonymous sign-in OK");
+  } else {
+    Serial.printf("Firebase sign-in error: %s\n", config.signer.signupError.message.c_str());
+  }
   config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
+  while(!Firebase.ready()) delay(200);
 
-  Serial.println("Waiting for Firebase...");
-  while (!Firebase.ready()) delay(200);
-
-  Serial.println("Writing demo states for Slots 2-6...");
-  for (int i = 0; i < 5; i++) {
+  Serial.println("Writing demo states for Slots 2-6…");
+  for(int i=0; i<5; i++){
     float demoDist = DEMO_FILLED[i] ? 8.0 : 30.0;
-    pushSlot(i + 2, DEMO_FILLED[i], demoDist);
+    pushSlot(i+2, DEMO_FILLED[i], demoDist);
     delay(200);
   }
-  Serial.println("Demo states written. Starting live scan of Slot 1...");
+  Serial.println("Live scan starting on Slot 1…");
 }
 
-
-/* ----------------------- 8. MAIN LOOP ---------------------------------- */
-
-void loop() {
-  if (!Firebase.ready()) return;
-
+/* ── LOOP ────────────────────────────────────────────── */
+void loop(){
+  if(!Firebase.ready()) return;
   float dist     = readDistance();
   bool  newState = decideState(slot1Filled, dist);
-
-  if (firstRun || newState != slot1Filled) {
+  if(firstRun || newState != slot1Filled){
     slot1Filled = newState;
     pushSlot(1, newState, dist);
   }
-
-  // Serial log every cycle so you can watch in Serial Monitor
-  Serial.printf("Slot 1: %.1f cm -> %s\n",
-                dist, slot1Filled ? "FILLED" : "empty");
-
+  Serial.printf("Slot 1: %.1f cm -> %s\n", dist, slot1Filled?"FILLED":"empty");
   firstRun = false;
   delay(CYCLE_MS);
 }

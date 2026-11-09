@@ -188,6 +188,9 @@ button{cursor:pointer;background:none;border:none}
 .time-left{font-size:13px;font-weight:600;color:#E3E8ED;font-variant-numeric:tabular-nums}
 .time-left.urgent{color:#FF9E95}
 .slot-distance{font-size:12px;color:#8A96A3;min-height:18px}
+.slot-eta{font-size:12px;font-weight:600;color:var(--sign);margin-top:2px}
+.slot-eta:empty{display:none}
+.slot-eta.est{font-weight:500;color:#DCE2E8}
 .slot-actions{display:flex;gap:6px;width:100%;margin-top:10px;min-height:36px;justify-content:center}
 .book-btn{display:none;flex:1;height:36px;border-radius:7px;background:var(--blue);color:#fff;font-weight:600;font-size:14px}
 .book-btn:hover{background:#3A62E0}
@@ -683,7 +686,7 @@ const auth = firebase.auth();
 /* ══════════════════════════════════════════════════
    CONSTANTS
 ══════════════════════════════════════════════════ */
-const RAZORPAY_KEY       = "rzp_test_TjqcMpp7lHcIX3"; // key_id is public; never put key_secret here
+const RAZORPAY_KEY       = "rzp_test_Tesq5yFsimrsOG"; // key_id is public; never put key_secret here
 const HOLD_MS            = 5 * 60 * 1000;              // slot hold while paying
 const CHECKOUT_TIMEOUT_S = 240;                        // Razorpay closes before the hold expires
 const EXPIRY_GRACE_MS    = 3000;                       // margin vs. server clock in rules
@@ -752,6 +755,7 @@ let currentHold       = null;   // {slot, bookingId}
 let paymentInProgress = false;
 let finalizing        = false;
 let listeners         = [];
+let slotHistory       = {};
 const removing        = new Set();
 
 /* ══════════════════════════════════════════════════
@@ -849,7 +853,7 @@ function friendlyAuthError(code){
 function resetSession(){
   stopAllListeners();
   stopCountdownTimer();
-  slotData={}; activeBookings={}; myBookings={}; userProfile={};
+  slotData={}; activeBookings={}; myBookings={}; userProfile={}; slotHistory={};
   avatarColorIdx=0; appInited=false; bookingSlot=null; currentHold=null;
   paymentInProgress=false; finalizing=false; cancelTarget=null; selectedLocId=null;
   removing.clear();
@@ -1094,6 +1098,7 @@ function buildSlots(){
         <div class="slot-status" id="sts-${i}">Connecting</div>
         <div class="slot-visual"><div class="space"></div><svg class="car" viewBox="0 0 60 104" aria-hidden="true"><use href="#car"/></svg></div>
         <div class="time-left" id="tl-${i}" style="display:none"></div>
+        <div class="slot-eta" id="eta-${i}"></div>
         <div class="slot-distance" id="dist-${i}"></div>
         <div class="slot-actions">
           <button class="book-btn" onclick="openBookingModal(${i})">Book</button>
@@ -1165,6 +1170,44 @@ function expiryFor(slotNum, state){
   const ab=liveEntry(slotNum);
   return ab ? ab.expiresAt : null;
 }
+function fmtClock(t){ return new Date(t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }
+function fmtDuration(ms){
+  const m=Math.max(1,Math.round(ms/60000));
+  if(m<60) return `${m}m`;
+  const h=Math.floor(m/60), r=m%60;
+  return r ? `${h}h ${r}m` : `${h}h`;
+}
+// Median of the last 20 completed stays in this slot (needs at least 3).
+function typicalStayMs(i){
+  const sessions=Object.values(slotHistory[`slot${i}`]||{})
+    .filter(h=>h && h.durationSec>=60 && h.durationSec<=86400)
+    .sort((a,b)=>(a.endedAt||0)-(b.endedAt||0))
+    .slice(-20)
+    .map(h=>h.durationSec*1000)
+    .sort((a,b)=>a-b);
+  if(sessions.length<3) return null;
+  const mid=Math.floor(sessions.length/2);
+  return sessions.length%2 ? sessions[mid] : (sessions[mid-1]+sessions[mid])/2;
+}
+function occupiedSince(i){
+  const sd=slotData[`slot${i}`];
+  const t=sd && Number(sd.updated);
+  return t && t<=serverNow()+60000 ? t : null;
+}
+// When an occupied slot is likely to be free: {at, exact} or null.
+function freeEstimate(i){
+  const state=getSlotState(i);
+  if(state==='reserved' || state==='mine'){
+    const exp=expiryFor(i, state);
+    return exp ? {at:exp, exact:true} : null;
+  }
+  if(state==='filled'){
+    const since=occupiedSince(i), typ=typicalStayMs(i);
+    if(since && typ) return {at:Math.max(since+typ, serverNow()), exact:false};
+  }
+  return null;
+}
+
 function updateAllSlotCards(){
   const labels={mine:'Your booking', reserved:'Reserved', filled:'Occupied', empty:'Free', loading:'Connecting'};
   for(let i=1; i<=6; i++){
@@ -1179,6 +1222,8 @@ function updateAllSlotCards(){
     const stsEl =document.getElementById(`sts-${i}`);
     const tlEl  =document.getElementById(`tl-${i}`);
     const distEl=document.getElementById(`dist-${i}`);
+    const etaEl =document.getElementById(`eta-${i}`);
+    etaEl.textContent=''; etaEl.className='slot-eta';
     stsEl.textContent = state==='reserved' && ab && ab.status==='hold' ? 'On hold' : labels[state];
 
     if(state==='mine' || state==='reserved'){
@@ -1187,7 +1232,21 @@ function updateAllSlotCards(){
       tlEl.style.display='block';
       tlEl.textContent=formatTimeLeft(ms);
       tlEl.classList.toggle('urgent', ms>0 && ms<5*60000);
+      if(exp && ms>0) etaEl.textContent = state==='mine' ? `Ends at ${fmtClock(exp)}` : `Free at ${fmtClock(exp)}`;
       distEl.textContent = carPresent ? 'Vehicle detected' : '';
+    } else if(state==='filled'){
+      const since=occupiedSince(i);
+      const parked=since ? serverNow()-since : 0;
+      tlEl.classList.remove('urgent');
+      if(parked>0 && parked<86400000){ tlEl.style.display='block'; tlEl.textContent=`Parked ${fmtDuration(parked)}`; }
+      else tlEl.style.display='none';
+      const est=freeEstimate(i);
+      if(est){
+        etaEl.classList.add('est');
+        etaEl.textContent = est.at-serverNow() < 2*60000 ? 'Usually free soon' : `Usually free by ${fmtClock(est.at)}`;
+      }
+      const dist=sd ? parseInt(sd.distance,10) : NaN;
+      distEl.textContent = dist>0 && dist<900 ? `Sensor: ${dist} cm` : '';
     } else {
       tlEl.style.display='none';
       tlEl.classList.remove('urgent');
@@ -1241,7 +1300,14 @@ function updateSummary(){
   document.getElementById('occ-free').style.width=pct(free);
   document.getElementById('occ-res').style.width=pct(reserved);
   document.getElementById('occ-busy').style.width=pct(filled);
-  document.getElementById('occ-label').textContent = total ? `${free} of ${n} free` : 'Loading slots…';
+  let label = total ? `${free} of ${n} free` : 'Loading slots…';
+  if(total && free===0){
+    const next=visibleSlots.map(i=>({i, est:freeEstimate(i)})).filter(x=>x.est).sort((a,b)=>a.est.at-b.est.at)[0];
+    label = next
+      ? `None free. Next: Slot ${next.i} ${next.est.exact?'at':'around'} ${fmtClock(next.est.at)}`
+      : 'None free right now';
+  }
+  document.getElementById('occ-label').textContent = label;
 }
 
 /* ══════════════════════════════════════════════════
@@ -1262,6 +1328,11 @@ function startFirebaseListeners(uid){
     cleanupExpired();
     updateAllSlotCards();
   }, ()=>{ banner.style.display='block'; });
+
+  listen('/history', snap=>{
+    slotHistory=snap.val()||{};
+    updateAllSlotCards();
+  });
 
   listen(`/bookings/${uid}`, snap=>{
     myBookings=snap.val()||{};

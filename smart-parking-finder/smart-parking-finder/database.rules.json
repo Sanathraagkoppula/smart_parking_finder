@@ -7,6 +7,15 @@
         ".validate": "newData.hasChildren(['status', 'slot']) && (newData.child('status').val() === 'filled' || newData.child('status').val() === 'empty')"
       }
     },
+    "history": {
+      ".read": "auth != null",
+      "$slot": {
+        "$id": {
+          ".write": "auth != null && auth.token.email === 'esp32@smartparking.app' && !data.exists()",
+          ".validate": "newData.hasChildren(['durationSec', 'endedAt']) && newData.child('durationSec').isNumber() && newData.child('durationSec').val() > 0"
+        }
+      }
+    },
     "active_bookings": {
       ".read": "auth != null",
       "$slot": {

@@ -8,6 +8,7 @@
    - Failed pushes are retried until Firebase accepts them
    - Demo slots 2-6 are only written if missing (not overwritten every boot)
    - WiFi / Firebase connect timeouts -> auto restart instead of hanging
+   - Logs each completed parking session to /history (for "free by" estimates)
    Hardware: HC-SR04 Echo is 5 V - use a 1k / 2k divider into GPIO 34.
    ========================================================================= */
 
@@ -45,6 +46,10 @@ FirebaseConfig config;
 bool slot1Filled = false;
 int  pushedState = -1;     // -1 = never pushed, 0 = empty, 1 = filled
 int  exitCounter = 0;
+
+unsigned long occupiedAtMs       = 0;
+bool          occupiedStartKnown = false;   // false if car was already there at boot
+const unsigned long MIN_SESSION_SEC = 60;   // ignore stays shorter than 1 min
 
 /* ── SENSOR ──────────────────────────────────────────── */
 float readOnce(){
@@ -98,6 +103,21 @@ bool pushSlot(int slotNumber, bool filled, float dist){
   }
   Serial.printf("  ❌ slot%d push failed: %s\n", slotNumber, fbdo.errorReason().c_str());
   return false;
+}
+
+// Records one completed parking session -> /history/slotN/<pushId>
+// The dashboard uses these to estimate when an occupied slot will be free.
+void logSession(int slotNumber, unsigned long durationSec){
+  if(durationSec < MIN_SESSION_SEC) return;
+  String path = "/history/slot" + String(slotNumber);
+  FirebaseJson json;
+  json.set("durationSec", (int)durationSec);
+  json.set("endedAt/.sv", "timestamp");
+  if(Firebase.RTDB.pushJSON(&fbdo, path.c_str(), &json)){
+    Serial.printf("  📋 slot%d session logged: %lu min\n", slotNumber, durationSec / 60);
+  } else {
+    Serial.printf("  ❌ slot%d session log failed: %s\n", slotNumber, fbdo.errorReason().c_str());
+  }
 }
 
 bool slotExists(int slotNumber){
@@ -182,7 +202,17 @@ void loop(){
 
   int want = slot1Filled ? 1 : 0;
   if(want != pushedState){
-    if(pushSlot(1, slot1Filled, dist)) pushedState = want;   // retried next cycle on failure
+    int prev = pushedState;
+    if(pushSlot(1, slot1Filled, dist)){                      // retried next cycle on failure
+      if(want == 1){
+        occupiedAtMs       = millis();
+        occupiedStartKnown = (prev != -1);                   // unknown if already parked at boot
+      } else if(prev == 1 && occupiedStartKnown){
+        logSession(1, (millis() - occupiedAtMs) / 1000);
+        occupiedStartKnown = false;
+      }
+      pushedState = want;
+    }
   }
 
   Serial.printf("Slot 1: %.1f cm -> %s\n", dist, slot1Filled ? "FILLED" : "empty");

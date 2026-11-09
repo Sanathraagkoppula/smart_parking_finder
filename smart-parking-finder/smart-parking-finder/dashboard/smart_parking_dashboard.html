@@ -690,6 +690,7 @@ const RAZORPAY_KEY       = "rzp_test_Tesq5yFsimrsOG"; // key_id is public; never
 const HOLD_MS            = 5 * 60 * 1000;              // slot hold while paying
 const CHECKOUT_TIMEOUT_S = 240;                        // Razorpay closes before the hold expires
 const EXPIRY_GRACE_MS    = 3000;                       // margin vs. server clock in rules
+const DEFAULT_STAY_MIN   = 60;                         // assumed stay until real history exists
 
 const SLOT_COORDS = {
   slot1:{lat:17.96950,lng:79.59450,label:'North Wing — Slot 1'},
@@ -1178,8 +1179,8 @@ function fmtDuration(ms){
   return r ? `${h}h ${r}m` : `${h}h`;
 }
 // Median of the last 20 completed stays in this slot (needs at least 3).
-function typicalStayMs(i){
-  const sessions=Object.values(slotHistory[`slot${i}`]||{})
+function medianStayMs(list){
+  const sessions=list
     .filter(h=>h && h.durationSec>=60 && h.durationSec<=86400)
     .sort((a,b)=>(a.endedAt||0)-(b.endedAt||0))
     .slice(-20)
@@ -1189,10 +1190,20 @@ function typicalStayMs(i){
   const mid=Math.floor(sessions.length/2);
   return sessions.length%2 ? sessions[mid] : (sessions[mid-1]+sessions[mid])/2;
 }
+// Typical stay: this slot's history → all slots' history → default assumption.
+function typicalStay(i){
+  const own=medianStayMs(Object.values(slotHistory[`slot${i}`]||{}));
+  if(own) return {ms:own, source:'slot'};
+  const all=medianStayMs(Object.values(slotHistory).flatMap(h=>Object.values(h||{})));
+  if(all) return {ms:all, source:'campus'};
+  return {ms:DEFAULT_STAY_MIN*60000, source:'default'};
+}
 function occupiedSince(i){
   const sd=slotData[`slot${i}`];
-  const t=sd && Number(sd.updated);
-  return t && t<=serverNow()+60000 ? t : null;
+  let t=sd && Number(sd.updated);
+  if(!t) return null;
+  if(t<1e12) t*=1000;                       // older firmware stored seconds
+  return t<=serverNow()+60000 ? t : null;
 }
 // When an occupied slot is likely to be free: {at, exact} or null.
 function freeEstimate(i){
@@ -1202,8 +1213,8 @@ function freeEstimate(i){
     return exp ? {at:exp, exact:true} : null;
   }
   if(state==='filled'){
-    const since=occupiedSince(i), typ=typicalStayMs(i);
-    if(since && typ) return {at:Math.max(since+typ, serverNow()), exact:false};
+    const since=occupiedSince(i);
+    if(since){ const typ=typicalStay(i); return {at:since+typ.ms, exact:false, source:typ.source}; }
   }
   return null;
 }
@@ -1238,12 +1249,18 @@ function updateAllSlotCards(){
       const since=occupiedSince(i);
       const parked=since ? serverNow()-since : 0;
       tlEl.classList.remove('urgent');
-      if(parked>0 && parked<86400000){ tlEl.style.display='block'; tlEl.textContent=`Parked ${fmtDuration(parked)}`; }
+      if(parked>0){ tlEl.style.display='block'; tlEl.textContent = parked<86400000 ? `Parked ${fmtDuration(parked)}` : 'Parked over a day'; }
       else tlEl.style.display='none';
       const est=freeEstimate(i);
       if(est){
         etaEl.classList.add('est');
-        etaEl.textContent = est.at-serverNow() < 2*60000 ? 'Usually free soon' : `Usually free by ${fmtClock(est.at)}`;
+        const word = est.source==='default' ? 'Est. free by' : 'Usually free by';
+        etaEl.textContent = est.at-serverNow() < 2*60000 ? 'Should be free soon' : `${word} ${fmtClock(est.at)}`;
+        etaEl.title = est.source==='slot' ? 'Based on recent stays in this slot'
+                    : est.source==='campus' ? 'Based on recent stays across campus'
+                    : `Assumes a ${DEFAULT_STAY_MIN}-minute stay until enough history is recorded`;
+      } else {
+        etaEl.classList.add('est'); etaEl.textContent='Free time unknown';
       }
       const dist=sd ? parseInt(sd.distance,10) : NaN;
       distEl.textContent = dist>0 && dist<900 ? `Sensor: ${dist} cm` : '';
@@ -1302,7 +1319,7 @@ function updateSummary(){
   document.getElementById('occ-busy').style.width=pct(filled);
   let label = total ? `${free} of ${n} free` : 'Loading slots…';
   if(total && free===0){
-    const next=visibleSlots.map(i=>({i, est:freeEstimate(i)})).filter(x=>x.est).sort((a,b)=>a.est.at-b.est.at)[0];
+    const next=visibleSlots.map(i=>({i, est:freeEstimate(i)})).filter(x=>x.est).map(x=>({i:x.i, est:{...x.est, at:Math.max(x.est.at, serverNow())}})).sort((a,b)=>a.est.at-b.est.at)[0];
     label = next
       ? `None free. Next: Slot ${next.i} ${next.est.exact?'at':'around'} ${fmtClock(next.est.at)}`
       : 'None free right now';

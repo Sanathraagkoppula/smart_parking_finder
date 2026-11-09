@@ -24,7 +24,7 @@
 
 /* ── DEMO STATES slots 2-6 (index 0 = slot 2) ──────── */
 const bool DEMO_FILLED[5]         = { true, false, true, true, false };
-const bool DEMO_OVERWRITE_ON_BOOT = false;   // true = reset demo slots every boot
+const bool DEMO_OVERWRITE_ON_BOOT = true;    // true = rewrite demo slots (fresh times) every boot
 
 /* ── DETECTION TUNING ───────────────────────────────── */
 const float         ENTER_CM      = 20.0;

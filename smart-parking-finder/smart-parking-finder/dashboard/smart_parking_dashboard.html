@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="theme-color" content="#FFC72C">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Smart Parking Finder · SR University</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -14,11 +15,12 @@
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --ground:#EDF0F3; --surface:#FFFFFF; --soft:#F5F7F9;
+  --ground:#F2F2F0; --surface:#FFFFFF; --soft:#F6F6F4;
   --ink:#17202A; --ink-2:#4A5663; --ink-3:#7B8794;
   --line:#DCE1E7; --line-2:#C5CCD4;
-  --blue:#1F48C9; --blue-ink:#163A9F; --blue-tint:#E8EEFC;
-  --asphalt:#2A3139; --asphalt-2:#343C45; --paint:#E3E8ED; --marking:#F2B705;
+  --blue:#17191C; --blue-ink:#000000; --blue-tint:#FFF4CC;
+  --sign:#FFC72C; --sign-2:#FFD45C;
+  --asphalt:#2A3139; --asphalt-2:#343C45; --paint:#E3E8ED; --marking:#FFC72C;
   --free:#178A55; --free-tint:#E3F4EB;
   --busy:#C8352B; --busy-tint:#FBE9E7;
   --hold:#946500; --hold-tint:#FDF3D6;
@@ -36,7 +38,7 @@ button{cursor:pointer;background:none;border:none}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:8px;font-weight:600;font-size:14px;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
 .btn-primary{background:var(--blue);color:#fff}
 .btn-primary:hover{background:var(--blue-ink)}
-.btn-primary:disabled{background:#93A6DE;cursor:not-allowed}
+.btn-primary:disabled{background:#8A8D91;color:#E6E6E6;cursor:not-allowed}
 .btn-secondary{background:var(--surface);border:1px solid var(--line-2);color:var(--ink)}
 .btn-secondary:hover{border-color:var(--ink-3)}
 .btn-ghost{color:var(--ink-2)}
@@ -311,6 +313,41 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
 #toast.success::before{background:#5BD39A}
 #toast.error::before{background:#FF8A80}
 #toast.warn::before{background:var(--marking)}
+
+/* ── Road-sign theme ───────────────────── */
+.btn-primary{color:var(--sign)}
+.sign{background:var(--blue);color:var(--sign)}
+.sign-lg{box-shadow:0 0 0 4px var(--sign) inset,0 0 0 6px var(--blue) inset}
+.topbar{background:var(--sign);border-bottom:3px solid var(--blue)}
+.brand small{color:#3D3A2C}
+.topbar .btn-secondary{background:transparent;border:2px solid var(--blue)}
+.topbar .btn-secondary:hover{background:rgba(0,0,0,.06)}
+.topbar .btn-ghost{color:var(--blue)}
+.topbar .btn-ghost:hover,.user-chip:hover{background:rgba(0,0,0,.08)}
+.user-avatar{border-color:var(--blue)!important}
+.page-head h1{font-size:42px;font-weight:700}
+.link-btn{color:var(--blue);text-decoration:underline}
+.filters{background:var(--blue)}
+.filter-tab{color:#C9CDD2}
+.filter-tab:hover{color:#fff}
+.filter-tab.active{background:var(--sign);color:var(--blue);box-shadow:none}
+.filter-tab .count{background:rgba(255,255,255,.14)!important;color:#fff!important}
+.filter-tab.active .count{background:rgba(0,0,0,.14)!important;color:var(--blue)!important}
+.lot-wrap{border-radius:6px;border-top:6px solid var(--sign)}
+.slot-num{color:var(--sign)}
+.book-btn{background:var(--sign);color:var(--blue);font-weight:700}
+.book-btn:hover{background:var(--sign-2)}
+.slot-card.mine .slot-visual{background:repeating-linear-gradient(135deg,rgba(255,255,255,.2) 0 10px,transparent 10px 20px)}
+.slot-card.mine .slot-status{background:#fff;color:var(--blue)}
+.auth-art{background:var(--sign);color:var(--blue)}
+.auth-art p{color:#3D3A2C}
+.art-lot{background:var(--asphalt)}
+.seg button.active{background:var(--blue);color:var(--sign)}
+.dur-opt.selected{border-color:var(--blue);background:var(--blue-tint);box-shadow:inset 0 0 0 1px var(--blue)}
+.slot-summary .sign{color:var(--sign)}
+.profile-account-type.registered{background:var(--blue-tint);color:#5C4300}
+.success-check{background:var(--free-tint)}
+#toast{border-left:3px solid var(--sign)}
 
 /* ── Responsive ────────────────────────── */
 @media(max-width:900px){

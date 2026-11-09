@@ -200,6 +200,11 @@ header{background:var(--surface);padding:14px 28px;display:flex;align-items:cent
 .bsi-label{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.8px}
 .bsi-name{font-size:16px;font-weight:700;color:var(--green)}
 .bsi-zone{font-size:12px;color:var(--dim)}
+.driver-fields{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
+.driver-fields .profile-input{padding:11px 14px}
+.field-err{font-size:12px;color:#f87171;min-height:14px}
+.save-profile-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+.save-profile-row input{accent-color:var(--accent);width:15px;height:15px}
 .section-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
 .duration-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px}
 .dur-opt{border:1.5px solid var(--border);border-radius:12px;padding:12px 8px;text-align:center;cursor:pointer;transition:all .2s;background:var(--card)}
@@ -320,6 +325,8 @@ footer{text-align:center;padding:14px;font-size:11px;color:var(--dim);border-top
     <div id="signup-form" class="auth-form" style="display:none">
       <input class="auth-input" id="signup-name"  type="text"     placeholder="Full name">
       <input class="auth-input" id="signup-email" type="email"    placeholder="Email address" autocomplete="email">
+      <input class="auth-input" id="signup-vehicle" type="text" placeholder="Vehicle number (e.g. TS 09 AB 1234)" maxlength="13"
+             style="text-transform:uppercase;letter-spacing:1px" oninput="this.value=this.value.toUpperCase()">
       <input class="auth-input" id="signup-pass"  type="password" placeholder="Password (min 6 chars)" autocomplete="new-password">
       <button class="auth-btn" id="signup-btn" onclick="doSignup()">Create Account →</button>
     </div>
@@ -442,7 +449,7 @@ footer{text-align:center;padding:14px;font-size:11px;color:var(--dim);border-top
       <div class="vehicle-input-wrap">
         <span class="vehicle-icon">🚗</span>
         <input class="profile-input vehicle-input" id="prof-vehicle" type="text"
-               placeholder="TS 09 AB 1234" maxlength="12"
+               placeholder="TS 09 AB 1234" maxlength="13"
                oninput="this.value=this.value.toUpperCase()">
       </div>
       <div class="profile-input-hint">Your vehicle registration number.</div>
@@ -478,6 +485,17 @@ footer{text-align:center;padding:14px;font-size:11px;color:var(--dim);border-top
         <div class="bsi-name" id="bk-slot-name">Slot 1</div>
         <div class="bsi-zone" id="bk-slot-zone">North Wing</div>
       </div>
+    </div>
+    <div class="section-label">Driver Details</div>
+    <div class="driver-fields">
+      <input class="profile-input" id="bk-name" type="text" placeholder="Driver name" maxlength="40">
+      <div class="vehicle-input-wrap">
+        <span class="vehicle-icon">🚗</span>
+        <input class="profile-input vehicle-input" id="bk-vehicle" type="text" placeholder="TS 09 AB 1234" maxlength="13"
+               oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div class="field-err" id="bk-err"></div>
+      <label class="save-profile-row"><input type="checkbox" id="bk-save-profile" checked> Save these details to my profile</label>
     </div>
     <div class="section-label">Select Duration</div>
     <div class="duration-grid" id="duration-grid"></div>
@@ -687,12 +705,17 @@ async function doSignup(){
   const e=document.getElementById('signup-email').value.trim();
   const p=document.getElementById('signup-pass').value;
   if(!n){ showAuthError('Enter your name.'); return; }
+  const v=normalizeVehicle(document.getElementById('signup-vehicle').value);
   if(!e){ showAuthError('Enter your email.'); return; }
+  if(!v){ showAuthError('Enter your vehicle number.'); return; }
+  if(!isValidVehicle(v)){ showAuthError('Invalid vehicle number. Example: TS 09 AB 1234'); return; }
   if(p.length<6){ showAuthError('Password must be at least 6 characters.'); return; }
   clearAuthError(); setAuthLoading('signup-btn', true);
   try{
     const c = await auth.createUserWithEmailAndPassword(e, p);
     await c.user.updateProfile({displayName: n});
+    userProfile = {displayName:n, vehicle:v, phone:'', department:'', avatarColor:0};
+    await db.ref(`/users/${c.user.uid}/profile`).set({...userProfile, createdAt:firebase.database.ServerValue.TIMESTAMP, updatedAt:firebase.database.ServerValue.TIMESTAMP});
     document.getElementById('user-name').textContent = n;
     document.getElementById('user-avatar').textContent = n[0].toUpperCase();
   }catch(err){ setAuthLoading('signup-btn', false); showAuthError(friendlyAuthError(err.code)); }
@@ -776,6 +799,16 @@ function applyAvatarColor(){
     const el=document.getElementById(id);
     if(el){ el.style.background=c.bg; el.style.borderColor=c.border; el.style.color=c.text; }
   });
+}
+function normalizeVehicle(v){
+  const raw=String(v||'').toUpperCase().replace(/[^A-Z0-9 ]/g,'').replace(/\s+/g,' ').trim();
+  const c=raw.replace(/ /g,'');
+  const m=c.match(/^([A-Z]{2})(\d{1,2})([A-Z]{0,3})(\d{4})$/) || c.match(/^(\d{2})(BH)(\d{4})([A-Z]{1,2})$/);
+  return m ? m.slice(1).filter(Boolean).join(' ') : raw;
+}
+function isValidVehicle(v){
+  const c=v.replace(/ /g,'');
+  return /^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{4}$/.test(c) || /^\d{2}BH\d{4}[A-Z]{1,2}$/.test(c);
 }
 function displayNameFor(user){
   return userProfile.displayName || user.displayName || (user.isAnonymous ? 'Guest' : user.email?.split('@')[0]) || 'User';
@@ -1143,6 +1176,7 @@ function renderBookingsList(){
         <span class="bk-tag">⏱ ${esc(b.duration)}</span>
         <span class="bk-tag">📅 ${fmt(b.bookedAt)}</span>
         ${isActive?`<span class="bk-tag">Until ${fmt(b.expiresAt)}</span>`:''}
+        ${b.driverName?`<span class="bk-tag">👤 ${esc(b.driverName)}</span>`:''}
         ${b.vehicle?`<span class="bk-tag">🚗 ${esc(b.vehicle)}</span>`:''}
       </div>
       ${countdown?`<div class="bk-countdown">${countdown}</div>`:''}
@@ -1268,6 +1302,11 @@ function openBookingModal(slotNum){
   if(s==='mine')     { showToast('🎫 You already booked this slot!','warn'); return; }
   if(hasAnyActiveBooking()){ showToast('⚠️ You already have an active booking.','warn'); return; }
   bookingSlot=slotNum;
+  const nameEl=document.getElementById('bk-name');
+  nameEl.value = currentUser.isAnonymous ? (userProfile.driverName||'') : displayNameFor(currentUser);
+  document.getElementById('bk-vehicle').value = userProfile.vehicle||'';
+  document.getElementById('bk-err').textContent='';
+  document.getElementById('bk-save-profile').checked=true;
   document.getElementById('bk-slot-name').textContent = 'Slot '+slotNum;
   document.getElementById('bk-slot-zone').textContent = ZONE_MAP[slotNum]||'';
   selectDuration(selectedDurIdx);
@@ -1282,8 +1321,17 @@ function resetPayButton(){
   btn.disabled=false; btn.textContent='⚡ Pay with Razorpay';
   document.getElementById('pay-hold').textContent='';
 }
+let bookingDriver = {name:'', vehicle:''};
 function openPaymentModal(){
   if(!bookingSlot) return;
+  const err=document.getElementById('bk-err');
+  const name=document.getElementById('bk-name').value.trim();
+  const vehicle=normalizeVehicle(document.getElementById('bk-vehicle').value);
+  if(!name){ err.textContent='Enter the driver name.'; return; }
+  if(!vehicle){ err.textContent='Enter the vehicle number.'; return; }
+  if(!isValidVehicle(vehicle)){ err.textContent='Invalid vehicle number. Example: TS 09 AB 1234'; return; }
+  err.textContent='';
+  bookingDriver={name, vehicle, saveToProfile:document.getElementById('bk-save-profile').checked};
   const d=DURATIONS[selectedDurIdx];
   document.getElementById('pay-amount-display').textContent = '₹'+d.price;
   document.getElementById('pay-slot-display').textContent   = `Slot ${bookingSlot} · ${d.label}`;
@@ -1350,7 +1398,7 @@ async function launchRazorpay(){
   document.getElementById('pay-hold').textContent=`⏱ Slot ${slot} is held for you for ${Math.round(HOLD_MS/60000)} minutes.`;
   btn.textContent='Opening Razorpay…';
 
-  const name  = userProfile.displayName||currentUser.displayName||'Guest';
+  const name  = bookingDriver.name||userProfile.displayName||currentUser.displayName||'Guest';
   const email = currentUser.isAnonymous ? '' : (currentUser.email||'');
   const options = {
     key:         RAZORPAY_KEY,
@@ -1387,6 +1435,20 @@ async function launchRazorpay(){
   }
 }
 
+async function saveDriverToProfile(uid, name, vehicle){
+  const upd={vehicle, updatedAt:firebase.database.ServerValue.TIMESTAMP};
+  if(currentUser.isAnonymous) upd.driverName=name;
+  else upd.displayName=name;
+  try{
+    await db.ref(`/users/${uid}/profile`).update(upd);
+    Object.assign(userProfile, upd);
+    if(!currentUser.isAnonymous){
+      document.getElementById('user-name').textContent=name;
+      document.getElementById('user-avatar').textContent=name[0].toUpperCase();
+      if(name!==currentUser.displayName) currentUser.updateProfile({displayName:name}).catch(()=>{});
+    }
+  }catch(e){}
+}
 async function saveWithRetry(path, value, tries){
   for(let i=0; i<tries; i++){
     try{ await db.ref(path).set(value); return true; }
@@ -1403,7 +1465,8 @@ async function finalizeBooking(slot, d, paymentId){
   const uid       = currentUser.uid;
   const hold      = currentHold; currentHold=null;
   const bookingId = hold ? hold.bookingId : 'BK'+randomId();
-  const vehicle   = userProfile.vehicle||'';
+  const vehicle    = bookingDriver.vehicle||userProfile.vehicle||'';
+  const driverName = bookingDriver.name||displayNameFor(currentUser);
   const locName   = selectedLocName;
 
   // Convert my hold into a confirmed booking. Also succeeds if the hold
@@ -1430,9 +1493,10 @@ async function finalizeBooking(slot, d, paymentId){
     locationName:locName, duration:d.label, durationMins:d.mins,
     amount:d.price, status: claimed ? 'active' : 'refund_pending',
     bookedAt:serverNow(), expiresAt: claimed ? expiresAt : serverNow(),
-    payMethod:'razorpay', vehicle
+    payMethod:'razorpay', vehicle, driverName
   };
   const saved=await saveWithRetry(`/bookings/${uid}/${bookingId}`, booking, 3);
+  if(claimed && bookingDriver.saveToProfile) saveDriverToProfile(uid, driverName, vehicle);
 
   finalizing=false; paymentInProgress=false; bookingSlot=null;
   document.getElementById('pay-processing').classList.remove('show');
@@ -1452,6 +1516,7 @@ async function finalizeBooking(slot, d, paymentId){
     <div class="succ-row"><span class="sr-label">Slot</span><span class="sr-val">Slot ${slot} — ${esc(locName)}</span></div>
     <div class="succ-row"><span class="sr-label">Duration</span><span class="sr-val">${esc(d.label)}</span></div>
     <div class="succ-row"><span class="sr-label">Amount</span><span class="sr-val">₹${d.price}</span></div>
+    <div class="succ-row"><span class="sr-label">Driver</span><span class="sr-val">${esc(driverName)}</span></div>
     ${vehicle?`<div class="succ-row"><span class="sr-label">Vehicle</span><span class="sr-val">${esc(vehicle)}</span></div>`:''}
     <div class="succ-row"><span class="sr-label">Valid Until</span><span class="sr-val">${expTime}, ${expDate}</span></div>
     <div class="succ-row"><span class="sr-label">Payment</span><span class="sr-val">Razorpay ✓</span></div>

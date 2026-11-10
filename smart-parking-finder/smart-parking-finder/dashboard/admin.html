@@ -84,6 +84,15 @@ textarea.input{height:auto;min-height:72px;padding:10px 12px;resize:vertical}
 .gate h1{font-family:var(--display);font-weight:600;font-size:28px;line-height:1.15}
 .gate p{color:var(--ink-2);margin:6px 0 20px}
 .gate form{display:flex;flex-direction:column;gap:14px}
+.label-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.link-btn{font-size:13px;font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.notice-ok{font-size:13px;line-height:1.5;padding:10px 12px;border-radius:6px;background:var(--free-tint);color:var(--free)}
+.notice-ok:empty{display:none}
+.divider{display:flex;align-items:center;gap:12px;color:var(--ink-3);font-size:13px;margin:16px 0}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--line)}
+.btn-google{background:#fff;border:1px solid var(--line-2);color:var(--ink);gap:10px}
+.btn-google:hover{border-color:var(--ink-3);background:var(--soft)}
+.g-mark{width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;font-family:Arial,sans-serif}
 .uid-box{display:flex;align-items:center;gap:8px;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px;word-break:break-all;margin:12px 0}
 .steps{font-size:14px;color:var(--ink-2);padding-left:20px;margin-bottom:20px}
 .steps li{margin-bottom:4px}
@@ -261,10 +270,15 @@ td.actions .btn+.btn{margin-left:6px}
     <p>Sign in with an account that has admin access.</p>
     <form onsubmit="event.preventDefault();doLogin()">
       <div class="field"><label for="lg-email">Email</label><input class="input" id="lg-email" type="email" autocomplete="username" required></div>
-      <div class="field"><label for="lg-pass">Password</label><input class="input" id="lg-pass" type="password" autocomplete="current-password" required></div>
+      <div class="field">
+        <div class="label-row"><label for="lg-pass">Password</label><button type="button" class="link-btn" onclick="adminForgot()">Forgot password?</button></div>
+        <input class="input" id="lg-pass" type="password" autocomplete="current-password" required></div>
+      <div class="notice-ok" id="lg-ok" role="status"></div>
       <div class="form-error" id="lg-err" role="alert"></div>
       <button class="btn btn-primary btn-block" id="lg-btn" type="submit">Log in</button>
     </form>
+    <div class="divider">or</div>
+    <button class="btn btn-google btn-block" id="lg-google" onclick="doGoogleLogin()"><span class="g-mark" aria-hidden="true">G</span><span id="lg-google-label">Continue with Google</span></button>
   </div>
 </section>
 
@@ -495,7 +509,15 @@ td.actions .btn+.btn{margin-left:6px}
         <div class="field"><label for="dr-in-dept">Department or course</label><input class="input" id="dr-in-dept" maxlength="60"></div>
         <div class="form-error" id="dr-err"></div>
         <button class="btn btn-primary" style="align-self:flex-start" id="dr-save" onclick="saveUser()">Save changes</button>
-        <span class="hint">Login email and password can only be changed by the user or in Firebase Console → Authentication.</span>
+        <span class="hint">Login email can only be changed by the user or in Firebase Console → Authentication.</span>
+      </div>
+    </div>
+    <div>
+      <div class="section-title">Password</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span class="hint" id="dr-pw-hint">Admins can't see or set passwords. Send the user a secure link to choose a new one.</span>
+        <button class="btn btn-secondary" style="align-self:flex-start" id="dr-reset" onclick="sendUserReset()">Send password reset email</button>
+        <div class="notice-ok" id="dr-reset-ok" role="status"></div>
       </div>
     </div>
     <div>
@@ -599,6 +621,51 @@ async function doLogin(){
     err.textContent=m[x.code]||'Sign-in failed. Try again.';
   }
   btn.disabled=false; btn.textContent='Log in';
+}
+function googleErrorMessage(code){
+  const m={
+    'auth/operation-not-supported-in-this-environment':'Google sign-in only works when this page is opened from a web address (for example http://localhost with Live Server, or your hosted site), not as a file on your computer.',
+    'auth/unauthorized-domain':'This website isn\'t allowed to use Google sign-in yet. Add its domain in Firebase → Authentication → Settings → Authorized domains.',
+    'auth/operation-not-allowed':'Google sign-in is turned off. Enable it in Firebase → Authentication → Sign-in method → Google.',
+    'auth/account-exists-with-different-credential':'This email already has a password login. Log in with your email and password instead.',
+    'auth/network-request-failed':'Network error. Check your connection and try again.',
+    'auth/internal-error':'Google sign-in failed. Reload the page and try again.'
+  };
+  return m[code] || 'Google sign-in failed. Try again.';
+}
+function googleProvider(){
+  const p=new firebase.auth.GoogleAuthProvider();
+  p.setCustomParameters({prompt:'select_account'});
+  return p;
+}
+async function doGoogleLogin(){
+  const err=$('lg-err'), btn=$('lg-google'), label=$('lg-google-label');
+  err.textContent=''; btn.disabled=true; label.textContent='Opening Google…';
+  try{ await auth.signInWithPopup(googleProvider()); }
+  catch(x){
+    if(x.code==='auth/popup-blocked' && location.protocol.startsWith('http')){
+      try{ await auth.signInWithRedirect(googleProvider()); return; }catch(e){ x=e; }
+    }
+    if(x.code!=='auth/popup-closed-by-user' && x.code!=='auth/cancelled-popup-request') err.textContent=googleErrorMessage(x.code);
+  }
+  btn.disabled=false; label.textContent='Continue with Google';
+}
+auth.getRedirectResult && auth.getRedirectResult().catch(x=>{ $('lg-err').textContent=googleErrorMessage(x.code); });
+async function adminForgot(){
+  const e=$('lg-email').value.trim(), err=$('lg-err'), ok=$('lg-ok');
+  err.textContent=''; ok.textContent='';
+  if(!e){ err.textContent='Type your email in the box above first, then click Forgot password.'; $('lg-email').focus(); return; }
+  try{ await auth.sendPasswordResetEmail(e); ok.textContent=`If an account exists for ${e}, a reset link is on its way. Check your inbox and spam folder.`; }
+  catch(x){ if(x.code==='auth/user-not-found') ok.textContent=`If an account exists for ${e}, a reset link is on its way. Check your inbox and spam folder.`; else err.textContent=x.code==='auth/invalid-email'?'That email address doesn\'t look right.':'Couldn\'t send the email. Try again.'; }
+}
+async function sendUserReset(){
+  const p=profileOf(drawerUid), ok=$('dr-reset-ok'), err=$('dr-err');
+  ok.textContent=''; err.textContent='';
+  if(!p.email){ err.textContent='This user has no email on file (guest account), so a reset link can\'t be sent.'; return; }
+  const btn=$('dr-reset'); btn.disabled=true;
+  try{ await auth.sendPasswordResetEmail(p.email); ok.textContent=`Reset link sent to ${p.email}.`; toast('Password reset email sent'); }
+  catch(x){ err.textContent='Couldn\'t send the email: '+(x.message||x.code); }
+  btn.disabled=false;
 }
 async function doLogout(){ stopListeners(); await auth.signOut(); }
 function copyUid(){ navigator.clipboard?.writeText(me?.uid||'').then(()=>toast('UID copied')); }
@@ -1014,6 +1081,12 @@ function openDrawer(uid){
   $('dr-in-phone').value=p.phone||'';
   $('dr-in-dept').value=p.department||'';
   $('dr-err').textContent='';
+  $('dr-reset-ok').textContent='';
+  const hasEmail=!!p.email;
+  $('dr-reset').disabled=!hasEmail;
+  $('dr-pw-hint').textContent = hasEmail
+    ? "Admins can't see or set passwords. Send the user a secure link to choose a new one."
+    : "Guest accounts have no email or password.";
   renderDrawer();
   $('drawer').classList.add('open');
 }

@@ -48,6 +48,14 @@ button{cursor:pointer;background:none;border:none}
 .btn-danger:disabled{opacity:.6;cursor:wait}
 .btn-block{width:100%;height:46px;font-size:15px}
 .link-btn{color:var(--blue);font-weight:600;font-size:14px}
+.link-btn.small{font-size:13px}
+.label-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.back-link{align-self:center;margin-top:4px}
+#forgot-form{margin-top:20px}
+.notice{font-size:13px;line-height:1.5;padding:10px 12px;border-radius:6px;background:var(--soft);color:var(--ink-2)}
+.notice:empty{display:none}
+.notice.ok{background:var(--free-tint);color:var(--free)}
+.pw-section{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direction:column;gap:10px}
 .link-btn:hover{color:var(--blue-ink);text-decoration:underline}
 
 /* ── Forms ─────────────────────────────── */
@@ -439,8 +447,9 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
         <div class="sign sign-sm">P</div>
         <div><b>Smart Parking Finder</b><small>SR University, Warangal</small></div>
       </div>
-      <h2>Welcome</h2>
-      <p class="auth-sub">Log in to check slots and manage your bookings.</p>
+      <h2 id="auth-title">Welcome</h2>
+      <p class="auth-sub" id="auth-subtitle">Log in to check slots and manage your bookings.</p>
+      <div id="auth-main">
       <div class="seg" role="tablist">
         <button class="auth-tab active" id="tab-login"  onclick="switchAuthTab('login')">Log in</button>
         <button class="auth-tab"        id="tab-signup" onclick="switchAuthTab('signup')">Create account</button>
@@ -449,7 +458,8 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
       <div id="login-form" class="auth-form">
         <div class="field"><label for="login-email">Email</label>
           <input class="input" id="login-email" type="email" placeholder="you@sru.edu.in" autocomplete="email"></div>
-        <div class="field"><label for="login-pass">Password</label>
+        <div class="field">
+          <div class="label-row"><label for="login-pass">Password</label><button type="button" class="link-btn small" onclick="showForgot()">Forgot password?</button></div>
           <input class="input" id="login-pass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
         <button class="btn btn-primary btn-block" id="login-btn" onclick="doLogin()">Log in</button>
       </div>
@@ -470,6 +480,14 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
         <span class="g-mark" aria-hidden="true">G</span><span id="google-btn-label">Continue with Google</span>
       </button>
       <button class="btn btn-secondary btn-block guest-btn" onclick="doGuest()">Continue as guest</button>
+      </div>
+      <div id="forgot-form" class="auth-form" style="display:none">
+        <div class="field"><label for="forgot-email">Email</label>
+          <input class="input" id="forgot-email" type="email" placeholder="you@sru.edu.in" autocomplete="email" onkeydown="if(event.key==='Enter')sendReset()"></div>
+        <div class="notice ok" id="forgot-ok" role="status"></div>
+        <button class="btn btn-primary btn-block" id="forgot-btn" onclick="sendReset()">Send reset link</button>
+        <button type="button" class="link-btn back-link" onclick="hideForgot()">Back to log in</button>
+      </div>
       <a class="admin-entry" href="admin.html">
         <svg class="i"><use href="#i-shield"/></svg>
         <span>Parking admin? <b>Log in to the admin panel</b></span>
@@ -587,6 +605,23 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
         <input class="input" id="prof-dept" type="text" placeholder="B.Tech CSE, Cybersecurity" maxlength="60"></div>
       <button class="btn btn-primary btn-block" id="prof-save-btn" onclick="saveProfile()">Save changes</button>
       <div class="profile-save-msg" id="prof-save-msg"></div>
+      <div class="pw-section" id="pw-section">
+        <div class="group-title">Password</div>
+        <div class="notice" id="pw-google-note">You sign in with Google, so this account has no separate password. To change it, update your Google account password.</div>
+        <div id="pw-form" class="driver-fields">
+          <div class="field"><label for="pw-current">Current password</label>
+            <input class="input" id="pw-current" type="password" autocomplete="current-password"></div>
+          <div class="field"><label for="pw-new">New password</label>
+            <input class="input" id="pw-new" type="password" autocomplete="new-password">
+            <span class="hint">At least 8 characters</span></div>
+          <div class="field"><label for="pw-confirm">Confirm new password</label>
+            <input class="input" id="pw-confirm" type="password" autocomplete="new-password" onkeydown="if(event.key==='Enter')changePassword()"></div>
+          <div class="field-err" id="pw-err" role="alert"></div>
+          <div class="notice ok" id="pw-ok" role="status"></div>
+          <button class="btn btn-secondary btn-block" id="pw-btn" onclick="changePassword()">Update password</button>
+          <button type="button" class="link-btn small" style="align-self:center" onclick="sendResetFromProfile()">Forgot your current password? Email me a reset link</button>
+        </div>
+      </div>
       <div class="profile-danger">
         <button class="btn btn-danger btn-block" onclick="doLogout()"><svg class="i"><use href="#i-logout"/></svg>Log out</button>
       </div>
@@ -839,6 +874,98 @@ function stopAllListeners(){
 /* ══════════════════════════════════════════════════
    AUTH
 ══════════════════════════════════════════════════ */
+const PW_ERRORS={
+  'auth/invalid-email':'That email address doesn\'t look right.',
+  'auth/missing-email':'Enter your email address.',
+  'auth/too-many-requests':'Too many attempts. Wait a few minutes and try again.',
+  'auth/network-request-failed':'Network error. Check your connection and try again.',
+  'auth/wrong-password':'Your current password is wrong.',
+  'auth/invalid-credential':'Your current password is wrong.',
+  'auth/invalid-login-credentials':'Your current password is wrong.',
+  'auth/weak-password':'Choose a stronger password (at least 8 characters).',
+  'auth/requires-recent-login':'For security, log out and log in again, then change your password.',
+  'auth/user-mismatch':'Your current password is wrong.'
+};
+const pwError=code=>PW_ERRORS[code]||'Something went wrong. Try again.';
+
+function showForgot(){
+  clearAuthError();
+  document.getElementById('auth-main').style.display='none';
+  document.getElementById('forgot-form').style.display='flex';
+  document.getElementById('auth-title').textContent='Reset your password';
+  document.getElementById('auth-subtitle').textContent='Enter the email you signed up with. We\'ll send you a link to choose a new password.';
+  document.getElementById('forgot-email').value=document.getElementById('login-email').value.trim();
+  document.getElementById('forgot-ok').textContent='';
+  setTimeout(()=>document.getElementById('forgot-email').focus(),30);
+}
+function hideForgot(){
+  clearAuthError();
+  document.getElementById('forgot-form').style.display='none';
+  document.getElementById('auth-main').style.display='block';
+  document.getElementById('auth-title').textContent='Welcome';
+  document.getElementById('auth-subtitle').textContent='Log in to check slots and manage your bookings.';
+  switchAuthTab('login');
+}
+async function sendReset(){
+  clearAuthError();
+  const email=document.getElementById('forgot-email').value.trim();
+  const ok=document.getElementById('forgot-ok'), btn=document.getElementById('forgot-btn');
+  ok.textContent='';
+  if(!email){ showAuthError('Enter your email address.'); return; }
+  btn.disabled=true; btn.textContent='Sending…';
+  try{
+    await auth.sendPasswordResetEmail(email);
+    ok.textContent=`If an account exists for ${email}, a reset link is on its way. Check your inbox and spam folder, then log in with your new password.`;
+  }catch(err){
+    if(err.code==='auth/user-not-found')
+      ok.textContent=`If an account exists for ${email}, a reset link is on its way. Check your inbox and spam folder, then log in with your new password.`;
+    else showAuthError(pwError(err.code));
+  }
+  btn.disabled=false; btn.textContent='Send reset link';
+}
+
+function hasPasswordLogin(user){ return !!user && (user.providerData||[]).some(p=>p && p.providerId==='password'); }
+function setupPasswordSection(){
+  const sec=document.getElementById('pw-section');
+  if(!currentUser || currentUser.isAnonymous){ sec.style.display='none'; return; }
+  sec.style.display='flex';
+  const pw=hasPasswordLogin(currentUser);
+  document.getElementById('pw-form').style.display = pw ? 'flex' : 'none';
+  document.getElementById('pw-google-note').style.display = pw ? 'none' : 'block';
+  ['pw-current','pw-new','pw-confirm'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('pw-err').textContent='';
+  document.getElementById('pw-ok').textContent='';
+}
+async function changePassword(){
+  const err=document.getElementById('pw-err'), ok=document.getElementById('pw-ok'), btn=document.getElementById('pw-btn');
+  err.textContent=''; ok.textContent='';
+  const cur=document.getElementById('pw-current').value;
+  const nw=document.getElementById('pw-new').value;
+  const cf=document.getElementById('pw-confirm').value;
+  if(!cur){ err.textContent='Enter your current password.'; return; }
+  if(nw.length<8){ err.textContent='New password must be at least 8 characters.'; return; }
+  if(nw===cur){ err.textContent='New password must be different from the current one.'; return; }
+  if(nw!==cf){ err.textContent='The two new passwords don\'t match.'; return; }
+  btn.disabled=true; btn.textContent='Updating…';
+  try{
+    const cred=firebase.auth.EmailAuthProvider.credential(currentUser.email, cur);
+    await currentUser.reauthenticateWithCredential(cred);
+    await currentUser.updatePassword(nw);
+    ['pw-current','pw-new','pw-confirm'].forEach(id=>document.getElementById(id).value='');
+    ok.textContent='Password updated. Use the new password next time you log in.';
+    showToast('Password updated','success');
+  }catch(e){ err.textContent=pwError(e.code); }
+  btn.disabled=false; btn.textContent='Update password';
+}
+async function sendResetFromProfile(){
+  const err=document.getElementById('pw-err'), ok=document.getElementById('pw-ok');
+  err.textContent=''; ok.textContent='';
+  try{
+    await auth.sendPasswordResetEmail(currentUser.email);
+    ok.textContent=`Reset link sent to ${currentUser.email}. Check your inbox and spam folder.`;
+  }catch(e){ err.textContent=pwError(e.code); }
+}
+
 function switchAuthTab(mode){
   ['login','signup'].forEach(t=>{
     document.getElementById(`tab-${t}`).classList.toggle('active', t===mode);
@@ -1003,6 +1130,7 @@ auth.onAuthStateChanged(user=>{
     else showMainApp(user);
   } else {
     document.getElementById('auth-overlay').style.display='flex';
+    if(document.getElementById('forgot-form').style.display==='flex') hideForgot();
     document.getElementById('location-overlay').style.display='none';
     document.getElementById('app').style.display='none';
     ['login-btn','signup-btn'].forEach(id=>{
@@ -1067,6 +1195,7 @@ function openProfileModal(){
   buildColorSwatches(); applyAvatarColor();
   document.getElementById('prof-save-msg').textContent='';
   document.getElementById('prof-save-msg').className='profile-save-msg';
+  setupPasswordSection();
   showModal('profile-modal');
 }
 async function saveProfile(){

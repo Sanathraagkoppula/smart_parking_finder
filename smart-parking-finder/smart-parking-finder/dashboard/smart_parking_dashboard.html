@@ -101,6 +101,11 @@ button{cursor:pointer;background:none;border:none}
 .admin-entry b{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
 .admin-entry:hover b{color:#000}
 .admin-entry .i{width:16px;height:16px}
+.btn-google{background:#fff;border:1px solid var(--line-2);color:var(--ink);gap:10px}
+.btn-google:hover{border-color:var(--ink-3);background:var(--soft)}
+.btn-google:disabled{opacity:.6;cursor:wait}
+.g-mark{width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;font-family:Arial,sans-serif}
+.guest-btn{margin-top:10px}
 .divider{display:flex;align-items:center;gap:12px;color:var(--ink-3);font-size:13px;margin:18px 0}
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--line)}
 
@@ -461,7 +466,10 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
         <button class="btn btn-primary btn-block" id="signup-btn" onclick="doSignup()">Create account</button>
       </div>
       <div class="divider">or</div>
-      <button class="btn btn-secondary btn-block" onclick="doGuest()">Continue as guest</button>
+      <button class="btn btn-google btn-block" id="google-btn" onclick="doGoogle()">
+        <span class="g-mark" aria-hidden="true">G</span><span id="google-btn-label">Continue with Google</span>
+      </button>
+      <button class="btn btn-secondary btn-block guest-btn" onclick="doGuest()">Continue as guest</button>
       <a class="admin-entry" href="admin.html">
         <svg class="i"><use href="#i-shield"/></svg>
         <span>Parking admin? <b>Log in to the admin panel</b></span>
@@ -872,6 +880,48 @@ async function doSignup(){
     document.getElementById('user-avatar').textContent = n[0].toUpperCase();
   }catch(err){ setAuthLoading('signup-btn', false); showAuthError(friendlyAuthError(err.code)); }
 }
+function googleErrorMessage(code){
+  const m={
+    'auth/operation-not-supported-in-this-environment':'Google sign-in only works when this page is opened from a web address (for example http://localhost with Live Server, or your hosted site), not as a file on your computer.',
+    'auth/unauthorized-domain':'This website isn\'t allowed to use Google sign-in yet. Add its domain in Firebase → Authentication → Settings → Authorized domains.',
+    'auth/operation-not-allowed':'Google sign-in is turned off. Enable it in Firebase → Authentication → Sign-in method → Google.',
+    'auth/account-exists-with-different-credential':'This email already has a password login. Log in with your email and password instead.',
+    'auth/network-request-failed':'Network error. Check your connection and try again.',
+    'auth/internal-error':'Google sign-in failed. Reload the page and try again.'
+  };
+  return m[code] || 'Google sign-in failed. Try again.';
+}
+function googleProvider(){
+  const p=new firebase.auth.GoogleAuthProvider();
+  p.setCustomParameters({prompt:'select_account'});
+  return p;
+}
+async function doGoogle(){
+  clearAuthError();
+  const btn=document.getElementById('google-btn'), label=document.getElementById('google-btn-label');
+  btn.disabled=true; label.textContent='Opening Google…';
+  try{
+    const res=await auth.signInWithPopup(googleProvider());
+    if(res && res.additionalUserInfo && res.additionalUserInfo.isNewUser){
+      const u=res.user;
+      await db.ref(`/users/${u.uid}/profile`).update({
+        displayName:u.displayName||'', email:u.email||'', isGuest:false, signInMethod:'google',
+        createdAt:firebase.database.ServerValue.TIMESTAMP, updatedAt:firebase.database.ServerValue.TIMESTAMP
+      });
+      showToast('Account created with Google. Add your vehicle number in your profile.','success');
+    }
+  }catch(err){
+    if(err.code==='auth/popup-blocked' && location.protocol.startsWith('http')){
+      try{ await auth.signInWithRedirect(googleProvider()); return; }catch(e){ err=e; }
+    }
+    if(err.code!=='auth/popup-closed-by-user' && err.code!=='auth/cancelled-popup-request')
+      showAuthError(googleErrorMessage(err.code));
+  }finally{
+    btn.disabled=false; label.textContent='Continue with Google';
+  }
+}
+auth.getRedirectResult && auth.getRedirectResult().catch(err=>showAuthError(googleErrorMessage(err.code)));
+
 async function doGuest(){
   clearAuthError();
   try{ await auth.signInAnonymously(); }

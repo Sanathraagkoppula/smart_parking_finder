@@ -1,9 +1,26 @@
 {
   "rules": {
+    "admins": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid"
+      }
+    },
+    "config": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
+    },
+    "slots": {
+      ".read": "auth != null",
+      "$slot": {
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+        ".validate": "newData.hasChildren(['number', 'zone']) && newData.child('number').isNumber() && newData.child('zone').isString()"
+      }
+    },
     "parking": {
       ".read": true,
       "$slot": {
-        ".write": "auth != null && auth.token.email === 'esp32-device@smartparking.app'",
+        ".write": "auth != null && (auth.token.email === 'esp32-device@smartparking.app' || root.child('admins').child(auth.uid).val() === true)",
         ".validate": "newData.hasChildren(['status', 'slot']) && (newData.child('status').val() === 'filled' || newData.child('status').val() === 'empty')"
       }
     },
@@ -19,20 +36,22 @@
     "active_bookings": {
       ".read": "auth != null",
       "$slot": {
-        ".write": "auth != null && ((!newData.exists() && (data.child('bookedBy').val() === auth.uid || data.child('expiresAt').val() < now)) || (newData.exists() && newData.child('bookedBy').val() === auth.uid && (!data.exists() || data.child('bookedBy').val() === auth.uid || data.child('expiresAt').val() < now)))",
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || ((!newData.exists() && (data.child('bookedBy').val() === auth.uid || data.child('expiresAt').val() < now)) || (newData.exists() && newData.child('bookedBy').val() === auth.uid && (!data.exists() || data.child('bookedBy').val() === auth.uid || data.child('expiresAt').val() < now))))",
         ".validate": "newData.hasChildren(['bookedBy', 'bookingId', 'status', 'expiresAt']) && newData.child('expiresAt').isNumber() && ((newData.child('status').val() === 'hold' && newData.child('expiresAt').val() <= now + 360000) || (newData.child('status').val() === 'confirmed' && newData.child('expiresAt').val() <= now + 43800000))"
       }
     },
     "bookings": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
+        ".read": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+        ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)"
       }
     },
     "users": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
+        ".read": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+        ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)"
       }
     }
   }

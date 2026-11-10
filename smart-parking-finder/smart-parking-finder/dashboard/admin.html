@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="theme-color" content="#FFC72C">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Admin · Smart Parking Finder</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --ground:#F2F2F0; --surface:#FFFFFF; --soft:#F6F6F4;
+  --ink:#17202A; --ink-2:#4A5663; --ink-3:#7B8794;
+  --line:#DCE1E7; --line-2:#C5CCD4;
+  --black:#17191C; --sign:#FFC72C; --sign-2:#FFD45C; --sign-tint:#FFF4CC;
+  --asphalt:#2A3139; --paint:#E3E8ED;
+  --free:#178A55; --free-tint:#E3F4EB;
+  --busy:#C8352B; --busy-tint:#FBE9E7;
+  --hold:#946500; --hold-tint:#FDF3D6;
+  --info:#2457C5; --info-tint:#E6EEFC;
+  --display:'Barlow Semi Condensed','Barlow',system-ui,sans-serif;
+  font-family:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color:var(--ink);
+}
+body{background:var(--ground);min-height:100vh;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:none}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--black);outline-offset:2px}
+.i{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.hidden{display:none!important}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:38px;padding:0 14px;border-radius:8px;font-weight:600;font-size:14px;white-space:nowrap;text-decoration:none;transition:background .15s,border-color .15s}
+.btn-primary{background:var(--black);color:var(--sign)}
+.btn-primary:hover{background:#000}
+.btn-primary:disabled{background:#8A8D91;color:#E6E6E6;cursor:not-allowed}
+.btn-sign{background:var(--sign);color:var(--black)}
+.btn-sign:hover{background:var(--sign-2)}
+.btn-secondary{background:var(--surface);border:1px solid var(--line-2)}
+.btn-secondary:hover{border-color:var(--ink-3)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-ghost{color:var(--ink-2)}
+.btn-ghost:hover{background:rgba(0,0,0,.06);color:var(--ink)}
+.btn-danger{background:var(--surface);border:1px solid #E8B9B4;color:var(--busy)}
+.btn-danger:hover{background:var(--busy-tint)}
+.btn-sm{height:32px;padding:0 10px;font-size:13px;border-radius:7px}
+.btn-block{width:100%;height:44px}
+.icon-btn{width:32px;height:32px;border-radius:7px;display:inline-grid;place-items:center;color:var(--ink-2)}
+.icon-btn:hover{background:var(--soft);color:var(--ink)}
+
+/* forms */
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;font-weight:600;color:var(--ink-2)}
+.input,select.input,textarea.input{width:100%;height:42px;padding:0 12px;border:1px solid var(--line-2);border-radius:6px;background:#fff;font-size:15px}
+textarea.input{height:auto;min-height:72px;padding:10px 12px;resize:vertical}
+.input:focus{outline:none;border-color:var(--black);box-shadow:0 0 0 3px var(--sign-tint)}
+.input:disabled{background:var(--soft);color:var(--ink-3)}
+.input.plate{text-transform:uppercase;letter-spacing:.06em;font-family:var(--display);font-weight:600;font-size:16px}
+.hint{font-size:12px;color:var(--ink-3)}
+.form-error{font-size:13px;color:var(--busy)}
+.form-error:empty{display:none}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.check-row{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.check-row input{width:16px;height:16px;accent-color:var(--black)}
+.input-icon{position:relative}
+.input-icon .i{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--ink-3);pointer-events:none}
+.input-icon .input{padding-left:36px}
+
+.sign{display:grid;place-items:center;background:var(--black);color:var(--sign);font-family:var(--display);font-weight:700;border-radius:7px;width:34px;height:34px;font-size:22px;flex-shrink:0}
+
+/* ── Login / gate ───────────────────────── */
+.gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--sign)}
+.gate-box{width:100%;max-width:400px;background:#fff;border-radius:12px;padding:32px;border-top:6px solid var(--black)}
+.gate-brand{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+.gate-brand b{font-family:var(--display);font-weight:600;font-size:18px;display:block;line-height:1.1}
+.gate-brand small{font-size:13px;color:var(--ink-3)}
+.gate h1{font-family:var(--display);font-weight:600;font-size:28px;line-height:1.15}
+.gate p{color:var(--ink-2);margin:6px 0 20px}
+.gate form{display:flex;flex-direction:column;gap:14px}
+.uid-box{display:flex;align-items:center;gap:8px;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px;word-break:break-all;margin:12px 0}
+.steps{font-size:14px;color:var(--ink-2);padding-left:20px;margin-bottom:20px}
+.steps li{margin-bottom:4px}
+.steps code{background:var(--soft);padding:1px 5px;border-radius:4px;font-size:13px}
+
+/* ── Shell ─────────────────────────────── */
+#shell{display:none;min-height:100vh}
+.topbar{position:sticky;top:0;z-index:50;height:60px;background:var(--sign);border-bottom:3px solid var(--black);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 24px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand b{font-family:var(--display);font-weight:700;font-size:18px;line-height:1.1;display:block}
+.brand small{font-size:12px;color:#3D3A2C}
+.top-actions{display:flex;align-items:center;gap:6px}
+.top-actions .btn-ghost{color:var(--black)}
+.admin-chip{font-size:13px;font-weight:600;color:var(--black);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.layout{display:grid;grid-template-columns:220px 1fr;min-height:calc(100vh - 60px)}
+.sidenav{background:var(--asphalt);padding:18px 12px;display:flex;flex-direction:column;gap:2px;position:sticky;top:60px;height:calc(100vh - 60px)}
+.nav-item{display:flex;align-items:center;gap:10px;height:42px;padding:0 12px;border-radius:8px;color:#C9D1DA;font-weight:600;font-size:15px;text-align:left;width:100%}
+.nav-item:hover{background:rgba(255,255,255,.06);color:#fff}
+.nav-item.active{background:rgba(255,199,44,.14);color:var(--sign);box-shadow:inset 3px 0 0 var(--sign)}
+.nav-badge{margin-left:auto;min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:var(--sign);color:var(--black);font-size:12px;font-weight:700;display:inline-grid;place-items:center}
+.nav-badge:empty{display:none}
+.nav-foot{margin-top:auto;padding:12px;font-size:12px;color:#8A96A3}
+.nav-foot a{color:#C9D1DA}
+main{padding:28px 32px 48px;min-width:0}
+.view-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.view-head h1{font-family:var(--display);font-weight:700;font-size:34px;line-height:1.1}
+.view-head p{color:var(--ink-2);margin-top:4px;font-size:14px}
+.view-actions{display:flex;gap:8px;flex-wrap:wrap}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.panel+.panel{margin-top:16px}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.panel-head h2{font-family:var(--display);font-weight:600;font-size:19px}
+.panel-head small{color:var(--ink-3);font-size:13px}
+.panel-body{padding:16px 18px}
+.empty{padding:40px 20px;text-align:center;color:var(--ink-3);font-size:14px}
+.empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
+.empty .btn{margin-top:14px}
+
+/* overview */
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:16px}
+.kpi{background:#fff;padding:16px 18px}
+.kpi span{font-size:13px;color:var(--ink-2);font-weight:500}
+.kpi b{display:block;font-family:var(--display);font-weight:700;font-size:32px;line-height:1.1;font-variant-numeric:tabular-nums;margin-top:2px}
+.kpi.alert{background:var(--sign-tint)}
+.kpi.alert b{color:var(--hold)}
+.ov-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:start}
+.ov-grid .panel+.panel{margin-top:0}
+.mini-lot{display:flex;flex-wrap:wrap;gap:8px;padding:16px 18px}
+.mini-slot{width:64px;height:82px;border-radius:6px;background:var(--asphalt);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:8px 4px 6px;border-top:4px solid #6B7480}
+.mini-slot b{font-family:var(--display);font-size:24px;line-height:1;color:var(--sign)}
+.mini-slot span{font-size:11px;font-weight:600}
+.mini-slot.empty{border-top-color:#5BD39A}.mini-slot.empty span{color:#6FE0A8}
+.mini-slot.filled{border-top-color:#FF8A80}.mini-slot.filled span{color:#FF9E95}
+.mini-slot.reserved{border-top-color:var(--sign)}.mini-slot.reserved span{color:#F6C944}
+.mini-legend{display:flex;gap:14px;flex-wrap:wrap;padding:0 18px 14px;font-size:12px;color:var(--ink-3)}
+
+/* tables */
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--line)}
+.toolbar .input-icon{flex:1;min-width:220px;max-width:360px}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chip{height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:600;color:var(--ink-2);border:1px solid var(--line-2);background:#fff;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{border-color:var(--ink-3)}
+.chip.active{background:var(--black);color:var(--sign);border-color:var(--black)}
+.chip .n{font-size:12px;opacity:.8}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:12px;font-weight:600;color:var(--ink-3);padding:10px 14px;border-bottom:1px solid var(--line);background:var(--soft);white-space:nowrap}
+td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr.clickable{cursor:pointer}
+tbody tr.clickable:hover{background:#FAFAF8}
+td.num{font-variant-numeric:tabular-nums}
+td .sub{display:block;font-size:12px;color:var(--ink-3)}
+td.actions{white-space:nowrap;text-align:right}
+td.actions .btn+.btn{margin-left:6px}
+.slot-tag{display:inline-grid;place-items:center;min-width:34px;height:28px;padding:0 6px;border-radius:5px;background:var(--black);color:var(--sign);font-family:var(--display);font-weight:700;font-size:17px}
+.plate{font-family:var(--display);font-weight:600;letter-spacing:.04em}
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;white-space:nowrap}
+.badge::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+.b-free{background:var(--free-tint);color:var(--free)}
+.b-busy{background:var(--busy-tint);color:var(--busy)}
+.b-hold{background:var(--hold-tint);color:var(--hold)}
+.b-info{background:var(--info-tint);color:var(--info)}
+.b-mute{background:var(--soft);color:var(--ink-3)}
+.zone-dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:1px}
+
+/* settings */
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.settings-grid .panel+.panel{margin-top:0}
+.panel-body .field+.field,.panel-body .field+.btn,.panel-body .grid-2+.btn{margin-top:14px}
+.save-msg{font-size:13px;margin-top:10px;min-height:18px}
+.save-msg.ok{color:var(--free)} .save-msg.err{color:var(--busy)}
+
+/* modal + drawer */
+.overlay{position:fixed;inset:0;z-index:1200;background:rgba(23,32,42,.5);display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .2s}
+.overlay.open{opacity:1;pointer-events:all}
+.modal{width:100%;max-width:480px;max-height:92vh;overflow-y:auto;background:#fff;border-radius:12px;box-shadow:0 24px 60px rgba(23,32,42,.28)}
+.modal-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 22px 0}
+.modal-title{font-family:var(--display);font-weight:600;font-size:22px;line-height:1.2}
+.modal-sub{font-size:14px;color:var(--ink-3);margin-top:2px}
+.modal-body{padding:18px 22px 22px;display:flex;flex-direction:column;gap:14px}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:4px}
+.summary-box{background:var(--soft);border-radius:8px;padding:12px 14px;font-size:14px;display:grid;grid-template-columns:auto 1fr;gap:4px 14px}
+.summary-box dt{color:var(--ink-3)}
+.summary-box dd{text-align:right;font-weight:600;word-break:break-all}
+.note-box{font-size:13px;color:var(--hold);background:var(--hold-tint);border-radius:6px;padding:10px 12px;line-height:1.5}
+#drawer{position:fixed;top:0;right:0;bottom:0;width:520px;max-width:100vw;z-index:1100;background:#fff;border-left:1px solid var(--line);box-shadow:-16px 0 40px rgba(23,32,42,.14);transform:translateX(100%);transition:transform .25s;display:flex;flex-direction:column}
+#drawer.open{transform:none}
+.drawer-head{display:flex;align-items:center;gap:14px;padding:18px 20px;border-bottom:1px solid var(--line)}
+.avatar{width:44px;height:44px;border-radius:50%;background:var(--sign);color:var(--black);display:grid;place-items:center;font-weight:700;font-size:18px;flex-shrink:0}
+.drawer-head b{display:block;font-size:17px}
+.drawer-head small{color:var(--ink-3);font-size:13px;word-break:break-all}
+.drawer-head .icon-btn{margin-left:auto}
+.drawer-body{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:18px}
+.section-title{font-family:var(--display);font-weight:600;font-size:18px;margin-bottom:10px}
+.meta-list{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14px}
+.meta-list dt{color:var(--ink-3)}
+.meta-list dd{word-break:break-all}
+.bk-item{border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.bk-item+.bk-item{margin-top:8px}
+.bk-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bk-line{font-size:13px;color:var(--ink-2);margin-top:6px}
+.bk-btns{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+
+#toast{visibility:hidden;position:fixed;left:50%;bottom:24px;z-index:3000;transform:translate(-50%,120px);background:var(--ink);color:#fff;border-radius:8px;border-left:3px solid var(--sign);padding:12px 16px;font-size:14px;max-width:calc(100vw - 32px);box-shadow:0 12px 32px rgba(23,32,42,.3);transition:transform .25s}
+#toast.show{visibility:visible;transform:translate(-50%,0)}
+#toast.error{border-left-color:#FF8A80}
+
+@media(max-width:1100px){ .kpis{grid-template-columns:repeat(3,1fr)} .ov-grid{grid-template-columns:1fr} }
+@media(max-width:860px){
+  .layout{grid-template-columns:1fr}
+  .sidenav{position:sticky;top:60px;z-index:40;height:auto;flex-direction:row;overflow-x:auto;padding:8px;gap:4px}
+  .nav-item{width:auto;flex-shrink:0;height:38px;font-size:14px}
+  .nav-item.active{box-shadow:inset 0 -3px 0 var(--sign)}
+  .nav-foot{display:none}
+  main{padding:20px 14px 40px}
+  .topbar{padding:0 14px}
+  .brand small,.admin-chip{display:none}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .grid-2{grid-template-columns:1fr}
+  /* tables become cards */
+  table.responsive thead{display:none}
+  table.responsive,table.responsive tbody,table.responsive tr,table.responsive td{display:block;width:100%}
+  table.responsive tr{border-bottom:1px solid var(--line);padding:10px 14px}
+  table.responsive td{border:none;padding:4px 0;display:flex;justify-content:space-between;gap:12px;text-align:right}
+  table.responsive td::before{content:attr(data-label);color:var(--ink-3);font-size:13px;text-align:left}
+  table.responsive td.actions{justify-content:flex-end;padding-top:8px}
+  table.responsive td.actions::before{content:none}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-p" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 17V7h4a3 3 0 0 1 0 6H9"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M3 9a2 2 0 0 0 0 4v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4a2 2 0 0 1 0-4V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><path d="M14 6v12" stroke-dasharray="2 2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></symbol>
+  <symbol id="i-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h10"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+</svg>
+
+<!-- LOGIN -->
+<section class="gate" id="gate-login">
+  <div class="gate-box">
+    <div class="gate-brand"><div class="sign">P</div><div><b>Smart Parking Admin</b><small>SR University</small></div></div>
+    <h1>Admin login</h1>
+    <p>Sign in with an account that has admin access.</p>
+    <form onsubmit="event.preventDefault();doLogin()">
+      <div class="field"><label for="lg-email">Email</label><input class="input" id="lg-email" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="lg-pass">Password</label><input class="input" id="lg-pass" type="password" autocomplete="current-password" required></div>
+      <div class="form-error" id="lg-err" role="alert"></div>
+      <button class="btn btn-primary btn-block" id="lg-btn" type="submit">Log in</button>
+    </form>
+  </div>
+</section>
+
+<!-- NO ACCESS -->
+<section class="gate hidden" id="gate-denied">
+  <div class="gate-box">
+    <div class="gate-brand"><div class="sign">P</div><div><b>Smart Parking Admin</b><small>SR University</small></div></div>
+    <h1>No admin access</h1>
+    <p>You're signed in as <b id="dn-email"></b>, but this account isn't an admin yet.</p>
+    <ol class="steps">
+      <li>Open Firebase Console → Realtime Database → Data.</li>
+      <li>Add <code>admins</code>, then inside it a key with this UID and the value <code>true</code> (boolean).</li>
+      <li>Reload this page.</li>
+    </ol>
+    <div class="uid-box"><span id="dn-uid"></span></div>
+    <button class="btn btn-secondary btn-block" onclick="copyUid()">Copy UID</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="doLogout()">Log out</button>
+  </div>
+</section>
+
+<!-- APP -->
+<div id="shell">
+  <header class="topbar">
+    <div class="brand"><div class="sign">P</div><div><b>Parking Admin</b><small>Smart Parking Finder</small></div></div>
+    <div class="top-actions">
+      <span class="admin-chip" id="admin-email"></span>
+      <a class="btn btn-ghost" href="smart_parking_dashboard.html" title="Open the user dashboard"><svg class="i"><use href="#i-back"/></svg><span>User view</span></a>
+      <button class="btn btn-ghost" onclick="doLogout()" title="Log out"><svg class="i"><use href="#i-logout"/></svg></button>
+    </div>
+  </header>
+  <div class="layout">
+    <nav class="sidenav" aria-label="Admin sections">
+      <button class="nav-item active" data-view="overview" onclick="go('overview')"><svg class="i"><use href="#i-grid"/></svg>Overview</button>
+      <button class="nav-item" data-view="slots" onclick="go('slots')"><svg class="i"><use href="#i-p"/></svg>Slots</button>
+      <button class="nav-item" data-view="bookings" onclick="go('bookings')"><svg class="i"><use href="#i-ticket"/></svg>Bookings <span class="nav-badge" id="nav-refunds"></span></button>
+      <button class="nav-item" data-view="users" onclick="go('users')"><svg class="i"><use href="#i-users"/></svg>Users</button>
+      <button class="nav-item" data-view="settings" onclick="go('settings')"><svg class="i"><use href="#i-cog"/></svg>Settings</button>
+      <div class="nav-foot">Refunds are sent from the <a href="https://dashboard.razorpay.com/app/payments" target="_blank" rel="noopener">Razorpay dashboard</a>.</div>
+    </nav>
+    <main id="main">
+
+      <!-- OVERVIEW -->
+      <section class="view" id="view-overview">
+        <div class="view-head"><div><h1>Overview</h1><p id="ov-sub">Live status across campus</p></div></div>
+        <div class="kpis">
+          <div class="kpi"><span>Slots</span><b id="k-slots">–</b></div>
+          <div class="kpi"><span>Free now</span><b id="k-free">–</b></div>
+          <div class="kpi"><span>Active bookings</span><b id="k-active">–</b></div>
+          <div class="kpi" id="k-refunds-box"><span>Refunds to process</span><b id="k-refunds">–</b></div>
+          <div class="kpi"><span>Revenue today</span><b id="k-today">–</b></div>
+        </div>
+        <div class="ov-grid">
+          <div class="panel">
+            <div class="panel-head"><h2>Refunds to process</h2><button class="btn btn-secondary btn-sm" onclick="go('bookings','refund')">View all</button></div>
+            <div id="ov-refunds"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Lot right now</h2><button class="btn btn-secondary btn-sm" onclick="go('slots')">Manage</button></div>
+            <div class="mini-lot" id="ov-lot"></div>
+            <div class="mini-legend"><span>Green: free</span><span>Red: occupied</span><span>Yellow: reserved</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SLOTS -->
+      <section class="view hidden" id="view-slots">
+        <div class="view-head">
+          <div><h1>Slots</h1><p>Add or remove parking slots. Changes appear on the user dashboard straight away.</p></div>
+          <div class="view-actions"><button class="btn btn-primary" onclick="openSlotModal()"><svg class="i"><use href="#i-plus"/></svg>Add slot</button></div>
+        </div>
+        <div class="panel">
+          <div class="table-wrap"><table class="responsive" id="slots-table"></table></div>
+          <div id="slots-empty" class="empty hidden">
+            <b>No slots in the database yet</b>
+            Users currently see the 6 built-in demo slots. Import them to start managing slots here, or add your own.
+            <div><button class="btn btn-sign" onclick="importDefaults()">Import the 6 default slots</button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- BOOKINGS -->
+      <section class="view hidden" id="view-bookings">
+        <div class="view-head"><div><h1>Bookings</h1><p>Every booking from every user. Cancel bookings and record refunds.</p></div></div>
+        <div class="panel">
+          <div class="toolbar">
+            <div class="input-icon"><svg class="i"><use href="#i-search"/></svg><input class="input" id="bk-search" placeholder="Search name, vehicle, email, payment ID" oninput="renderBookings()"></div>
+            <div class="chips" id="bk-chips"></div>
+          </div>
+          <div class="table-wrap"><table class="responsive" id="bk-table"></table></div>
+          <div id="bk-empty" class="empty hidden"><b>No bookings match</b>Try a different filter or search.</div>
+        </div>
+      </section>
+
+      <!-- USERS -->
+      <section class="view hidden" id="view-users">
+        <div class="view-head"><div><h1>Users</h1><p>Select a user to see their bookings and edit their details.</p></div></div>
+        <div class="panel">
+          <div class="toolbar">
+            <div class="input-icon"><svg class="i"><use href="#i-search"/></svg><input class="input" id="us-search" placeholder="Search name, email, vehicle, phone" oninput="renderUsers()"></div>
+            <div class="chips" id="us-chips"></div>
+          </div>
+          <div class="table-wrap"><table class="responsive" id="us-table"></table></div>
+          <div id="us-empty" class="empty hidden"><b>No users found</b>Users appear here after they sign in to the dashboard.</div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="view hidden" id="view-settings">
+        <div class="view-head"><div><h1>Settings</h1><p>Values the user dashboard reads live from Firebase.</p></div></div>
+        <div class="settings-grid">
+          <div class="panel">
+            <div class="panel-head"><h2>Payments</h2></div>
+            <div class="panel-body">
+              <div class="field"><label for="st-rzp">Razorpay Key ID</label>
+                <input class="input" id="st-rzp" placeholder="rzp_test_XXXXXXXXXXXX" autocomplete="off">
+                <span class="hint">Copy it from Razorpay → Account &amp; Settings → API Keys. Use the Key ID only, never the Key Secret.</span></div>
+              <button class="btn btn-primary" onclick="saveRazorpayKey()">Save key</button>
+              <div class="save-msg" id="st-rzp-msg"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Free-time estimates</h2></div>
+            <div class="panel-body">
+              <div class="field"><label for="st-stay">Assumed stay (minutes)</label>
+                <input class="input" id="st-stay" type="number" min="5" max="720" step="5" placeholder="60">
+                <span class="hint">Used for "Est. free by" until a slot has at least 3 recorded stays.</span></div>
+              <button class="btn btn-primary" onclick="saveStay()">Save</button>
+              <div class="save-msg" id="st-stay-msg"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Admins</h2></div>
+            <div class="panel-body" style="font-size:14px;color:var(--ink-2)">
+              <p>To give someone admin access, have them sign up on the user dashboard, then in Firebase Console → Realtime Database → Data add their UID under <b>admins</b> with the value <b>true</b>.</p>
+              <dl class="meta-list" style="margin-top:12px"><dt>Your UID</dt><dd id="st-uid"></dd></dl>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- SLOT MODAL -->
+<div class="overlay" id="slot-modal">
+  <div class="modal" role="dialog" aria-labelledby="sm-title">
+    <div class="modal-header">
+      <div><div class="modal-title" id="sm-title">Add slot</div><div class="modal-sub" id="sm-sub">The new slot is free until a car parks or you change it.</div></div>
+      <button class="icon-btn" onclick="closeOverlay('slot-modal')" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="field"><label for="sm-num">Slot number</label><input class="input" id="sm-num" type="number" min="1" step="1"></div>
+        <div class="field"><label for="sm-zone">Zone</label><input class="input" id="sm-zone" list="zone-list" placeholder="North Wing"><datalist id="zone-list"></datalist></div>
+      </div>
+      <div class="field"><label for="sm-note">Zone description <span class="hint">(optional)</span></label><input class="input" id="sm-note" placeholder="Near admin block" maxlength="40"></div>
+      <div class="grid-2">
+        <div class="field"><label for="sm-lat">Latitude</label><input class="input" id="sm-lat" inputmode="decimal" placeholder="17.96950"></div>
+        <div class="field"><label for="sm-lng">Longitude</label><input class="input" id="sm-lng" inputmode="decimal" placeholder="79.59450"></div>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="useMyLocation()"><svg class="i"><use href="#i-pin"/></svg>Use my current location</button>
+      <label class="check-row"><input type="checkbox" id="sm-sensor"> This slot has a live sensor (ESP32)</label>
+      <div class="form-error" id="sm-err"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeOverlay('slot-modal')">Cancel</button>
+        <button class="btn btn-primary" id="sm-save" onclick="saveSlot()">Add slot</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- REFUND MODAL -->
+<div class="overlay" id="refund-modal">
+  <div class="modal" role="dialog" aria-labelledby="rf-title">
+    <div class="modal-header">
+      <div><div class="modal-title" id="rf-title">Record refund</div><div class="modal-sub">Send the refund in Razorpay first, then record it here.</div></div>
+      <button class="icon-btn" onclick="closeOverlay('refund-modal')" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <dl class="summary-box" id="rf-summary"></dl>
+      <a class="btn btn-sign" id="rf-rzp" target="_blank" rel="noopener"><svg class="i"><use href="#i-ext"/></svg>Open this payment in Razorpay</a>
+      <div class="note-box">In Razorpay, open the payment and choose <b>Issue Refund</b>. Copy the refund ID it shows (starts with <b>rfnd_</b>) and paste it below.</div>
+      <div class="grid-2">
+        <div class="field"><label for="rf-amount">Amount refunded (₹)</label><input class="input" id="rf-amount" type="number" min="1" step="1"></div>
+        <div class="field"><label for="rf-ref">Razorpay refund ID</label><input class="input" id="rf-ref" placeholder="rfnd_XXXXXXXX"></div>
+      </div>
+      <div class="field"><label for="rf-note">Note for the record <span class="hint">(optional)</span></label><textarea class="input" id="rf-note" maxlength="200"></textarea></div>
+      <div class="form-error" id="rf-err"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeOverlay('refund-modal')">Cancel</button>
+        <button class="btn btn-primary" id="rf-save" onclick="saveRefund()">Mark as refunded</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM -->
+<div class="overlay" id="confirm-modal">
+  <div class="modal" role="alertdialog" aria-labelledby="cf-title" style="max-width:420px">
+    <div class="modal-header"><div><div class="modal-title" id="cf-title">Are you sure?</div></div></div>
+    <div class="modal-body">
+      <div id="cf-msg" style="font-size:14px;color:var(--ink-2);white-space:pre-line"></div>
+      <label class="check-row hidden" id="cf-check-row"><input type="checkbox" id="cf-check" checked> <span id="cf-check-label"></span></label>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeOverlay('confirm-modal')">Keep it</button>
+        <button class="btn btn-danger" id="cf-ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- USER DRAWER -->
+<aside id="drawer" aria-label="User details">
+  <div class="drawer-head">
+    <div class="avatar" id="dr-avatar">?</div>
+    <div style="min-width:0"><b id="dr-name">User</b><small id="dr-email"></small></div>
+    <button class="icon-btn" onclick="closeDrawer()" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="drawer-body">
+    <div>
+      <div class="section-title">Details</div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="field"><label for="dr-in-name">Display name</label><input class="input" id="dr-in-name" maxlength="40"></div>
+        <div class="grid-2">
+          <div class="field"><label for="dr-in-vehicle">Vehicle number</label><input class="input plate" id="dr-in-vehicle" maxlength="13" placeholder="TS 09 AB 1234" oninput="this.value=this.value.toUpperCase()"></div>
+          <div class="field"><label for="dr-in-phone">Phone</label><input class="input" id="dr-in-phone" type="tel" maxlength="15" placeholder="+91 98765 43210"></div>
+        </div>
+        <div class="field"><label for="dr-in-dept">Department or course</label><input class="input" id="dr-in-dept" maxlength="60"></div>
+        <div class="form-error" id="dr-err"></div>
+        <button class="btn btn-primary" style="align-self:flex-start" id="dr-save" onclick="saveUser()">Save changes</button>
+        <span class="hint">Login email and password can only be changed by the user or in Firebase Console → Authentication.</span>
+      </div>
+    </div>
+    <div>
+      <div class="section-title">Account</div>
+      <dl class="meta-list" id="dr-meta"></dl>
+    </div>
+    <div>
+      <div class="section-title">Bookings</div>
+      <div id="dr-bookings"></div>
+    </div>
+  </div>
+</aside>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ══════════════════════════════════════════════════
+   FIREBASE — same project as the user dashboard
+══════════════════════════════════════════════════ */
+const firebaseConfig = {
+  apiKey:      "AIzaSyCagoL_9_uaeIcqJA8GxYSvClHi1MskSl4",
+  authDomain:  "finialsmartparking.firebaseapp.com",
+  databaseURL: "https://finialsmartparking-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:   "finialsmartparking",
+};
+firebase.initializeApp(firebaseConfig);
+const db   = firebase.database();
+const auth = firebase.auth();
+const TS   = firebase.database.ServerValue.TIMESTAMP;
+
+const DEFAULT_SLOTS = {
+  slot1:{number:1, zone:'North Wing', zoneNote:'Near admin block', lat:17.96950, lng:79.59450, sensor:true},
+  slot2:{number:2, zone:'North Wing', zoneNote:'Near admin block', lat:17.96930, lng:79.59430, sensor:false},
+  slot3:{number:3, zone:'South Wing', zoneNote:'Near labs',        lat:17.96880, lng:79.59480, sensor:false},
+  slot4:{number:4, zone:'South Wing', zoneNote:'Near labs',        lat:17.96860, lng:79.59460, sensor:false},
+  slot5:{number:5, zone:'Main Gate',  zoneNote:'Entrance',         lat:17.96820, lng:79.59420, sensor:false},
+  slot6:{number:6, zone:'Main Gate',  zoneNote:'Entrance',         lat:17.96800, lng:79.59400, sensor:false},
+};
+const ZONE_PALETTE = ['#3B82F6','#F97316','#22C55E','#A855F7','#EC4899','#14B8A6','#EAB308','#64748B'];
+const KNOWN_ZONE_COLORS = {'north wing':'#3B82F6','south wing':'#F97316','main gate':'#22C55E'};
+
+/* ══════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════ */
+let me=null, serverOffset=0, listeners=[];
+let slots={}, parking={}, active={}, allBookings={}, users={}, config={};
+let currentView='overview', bkFilter='all', usFilter='all';
+let editingSlotKey=null, refundTarget=null, drawerUid=null, renderQueued=false;
+
+db.ref('.info/serverTimeOffset').on('value', s=>{ serverOffset=s.val()||0; });
+const now = ()=>Date.now()+serverOffset;
+
+/* ══════════════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════════════ */
+function esc(v){ return String(v ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function $(id){ return document.getElementById(id); }
+function rupees(n){ return '₹'+(Number(n)||0).toLocaleString('en-IN'); }
+function fmtDate(t){ return t ? new Date(t).toLocaleString([], {day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}) : '–'; }
+function fmtDay(t){ return t ? new Date(t).toLocaleDateString([], {day:'numeric',month:'short',year:'numeric'}) : '–'; }
+function startOfToday(){ const d=new Date(now()); d.setHours(0,0,0,0); return d.getTime(); }
+function normalizeVehicle(v){
+  const raw=String(v||'').toUpperCase().replace(/[^A-Z0-9 ]/g,'').replace(/\s+/g,' ').trim();
+  const c=raw.replace(/ /g,'');
+  const m=c.match(/^([A-Z]{2})(\d{1,2})([A-Z]{0,3})(\d{4})$/) || c.match(/^(\d{2})(BH)(\d{4})([A-Z]{1,2})$/);
+  return m ? m.slice(1).filter(Boolean).join(' ') : raw;
+}
+function isValidVehicle(v){
+  const c=v.replace(/ /g,'');
+  return /^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{4}$/.test(c) || /^\d{2}BH\d{4}[A-Z]{1,2}$/.test(c);
+}
+let toastTimer=null;
+function toast(msg, type=''){
+  const t=$('toast'); t.textContent=msg; t.className='show '+type;
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>{ t.className=type; }, 3400);
+}
+function listen(path, cb){
+  const ref=db.ref(path);
+  const h=ref.on('value', cb, err=>toast('Lost access to '+path+': '+err.message,'error'));
+  listeners.push({ref,h});
+}
+function stopListeners(){ listeners.forEach(({ref,h})=>ref.off('value',h)); listeners=[]; }
+function queueRender(){
+  if(renderQueued) return;
+  renderQueued=true;
+  requestAnimationFrame(()=>{ renderQueued=false; renderAll(); });
+}
+
+/* ══════════════════════════════════════════════════
+   AUTH + ACCESS CHECK
+══════════════════════════════════════════════════ */
+async function doLogin(){
+  const e=$('lg-email').value.trim(), p=$('lg-pass').value;
+  const btn=$('lg-btn'), err=$('lg-err');
+  err.textContent=''; btn.disabled=true; btn.textContent='Signing in…';
+  try{ await auth.signInWithEmailAndPassword(e,p); }
+  catch(x){
+    const m={'auth/invalid-credential':'Incorrect email or password.','auth/invalid-login-credentials':'Incorrect email or password.',
+      'auth/wrong-password':'Incorrect email or password.','auth/user-not-found':'No account with this email.',
+      'auth/too-many-requests':'Too many attempts. Wait a few minutes and try again.','auth/network-request-failed':'Network error. Check your connection.'};
+    err.textContent=m[x.code]||'Sign-in failed. Try again.';
+  }
+  btn.disabled=false; btn.textContent='Log in';
+}
+async function doLogout(){ stopListeners(); await auth.signOut(); }
+function copyUid(){ navigator.clipboard?.writeText(me?.uid||'').then(()=>toast('UID copied')); }
+
+auth.onAuthStateChanged(async user=>{
+  stopListeners();
+  me=user;
+  $('gate-login').classList.toggle('hidden', !!user);
+  $('gate-denied').classList.add('hidden');
+  $('shell').style.display='none';
+  if(!user) return;
+  if(user.isAnonymous){ await auth.signOut(); return; }
+  let isAdmin=false;
+  try{ isAdmin = (await db.ref(`/admins/${user.uid}`).get()).val()===true; }catch(e){}
+  if(!isAdmin){
+    $('dn-email').textContent=user.email||'';
+    $('dn-uid').textContent=user.uid;
+    $('gate-denied').classList.remove('hidden');
+    return;
+  }
+  $('admin-email').textContent=user.email||'';
+  $('st-uid').textContent=user.uid;
+  $('shell').style.display='block';
+  startListeners();
+  go(location.hash.slice(1)||'overview');
+});
+
+function startListeners(){
+  listen('/slots',           s=>{ slots=s.val()||{}; queueRender(); });
+  listen('/parking',         s=>{ parking=s.val()||{}; queueRender(); });
+  listen('/active_bookings', s=>{ active=s.val()||{}; queueRender(); });
+  listen('/bookings',        s=>{ allBookings=s.val()||{}; queueRender(); });
+  listen('/users',           s=>{ users=s.val()||{}; queueRender(); });
+  listen('/config',          s=>{ config=s.val()||{}; fillSettings(); });
+}
+
+/* ══════════════════════════════════════════════════
+   NAV
+══════════════════════════════════════════════════ */
+function go(view, filter){
+  if(!['overview','slots','bookings','users','settings'].includes(view)) view='overview';
+  currentView=view;
+  if(filter) bkFilter=filter;
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('hidden', v.id!==`view-${view}`));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.view===view));
+  history.replaceState(null,'','#'+view);
+  renderAll();
+  window.scrollTo(0,0);
+}
+
+/* ══════════════════════════════════════════════════
+   DERIVED DATA
+══════════════════════════════════════════════════ */
+function slotList(){
+  return Object.entries(slots)
+    .filter(([,s])=>s && Number(s.number)>0)
+    .map(([key,s])=>({key, ...s, number:Number(s.number)}))
+    .sort((a,b)=>a.number-b.number);
+}
+function zoneColors(){
+  const map={}; let i=0;
+  const used=new Set(slotList().map(s=>KNOWN_ZONE_COLORS[(s.zone||'').toLowerCase()]).filter(Boolean));
+  const free=ZONE_PALETTE.filter(c=>!used.has(c));
+  slotList().forEach(s=>{ const z=(s.zone||'').toLowerCase(); if(!(z in map)) map[z]=KNOWN_ZONE_COLORS[z]||(free.length?free[i++%free.length]:ZONE_PALETTE[i++%ZONE_PALETTE.length]); });
+  return map;
+}
+function liveBookingFor(n){
+  const ab=active[`slot${n}`];
+  return ab && ab.expiresAt>now() ? ab : null;
+}
+function slotState(n){
+  if(liveBookingFor(n)) return 'reserved';
+  const p=parking[`slot${n}`];
+  if(!p) return 'unknown';
+  return p.status==='filled' ? 'filled' : 'empty';
+}
+function bookingRows(){
+  const rows=[];
+  Object.entries(allBookings).forEach(([uid,list])=>{
+    Object.entries(list||{}).forEach(([id,b])=>{ if(b) rows.push({...b, uid, id}); });
+  });
+  return rows.sort((a,b)=>(b.bookedAt||0)-(a.bookedAt||0));
+}
+function bookingState(b){
+  if(b.refundStatus==='refunded') return 'refunded';
+  if(b.refundStatus==='requested' || b.status==='refund_pending') return 'refund';
+  if(b.status==='cancelled') return 'cancelled';
+  if(b.status==='active' && b.expiresAt>now()) return 'active';
+  return 'expired';
+}
+const BK_LABEL = {active:['Active','b-free'], refund:['Refund to process','b-hold'], refunded:['Refunded','b-info'], cancelled:['Cancelled','b-busy'], expired:['Expired','b-mute']};
+function profileOf(uid){ return users[uid]?.profile || {}; }
+function userName(uid){
+  const p=profileOf(uid);
+  if(p.displayName) return p.displayName;
+  if(p.driverName) return p.driverName;
+  if(p.email) return p.email.split('@')[0];
+  const b=Object.values(allBookings[uid]||{}).find(x=>x && x.driverName);
+  return b ? b.driverName : (p.isGuest ? 'Guest' : 'Unknown user');
+}
+
+/* ══════════════════════════════════════════════════
+   RENDER
+══════════════════════════════════════════════════ */
+function renderAll(){
+  const refunds=bookingRows().filter(b=>bookingState(b)==='refund').length;
+  $('nav-refunds').textContent = refunds || '';
+  if(currentView==='overview') renderOverview();
+  if(currentView==='slots')    renderSlots();
+  if(currentView==='bookings') renderBookings();
+  if(currentView==='users')    renderUsers();
+  if(drawerUid) renderDrawer();
+}
+
+function renderOverview(){
+  const list=slotList();
+  const rows=bookingRows();
+  const free=list.filter(s=>slotState(s.number)==='empty').length;
+  const activeCount=rows.filter(b=>bookingState(b)==='active').length;
+  const refunds=rows.filter(b=>bookingState(b)==='refund');
+  const today=startOfToday();
+  const revenue=rows.filter(b=>(b.bookedAt||0)>=today && b.status!=='refund_pending')
+    .reduce((sum,b)=>sum + (Number(b.amount)||0) - (b.refundStatus==='refunded' ? Number(b.refundAmount)||0 : 0), 0);
+  $('k-slots').textContent=list.length;
+  $('k-free').textContent=list.length ? free : '–';
+  $('k-active').textContent=activeCount;
+  $('k-refunds').textContent=refunds.length;
+  $('k-refunds-box').classList.toggle('alert', refunds.length>0);
+  $('k-today').textContent=rupees(revenue);
+  $('ov-sub').textContent = list.length ? `Live status across ${list.length} slot${list.length!==1?'s':''}` : 'No slots in the database yet. Open Slots to import or add them.';
+
+  $('ov-refunds').innerHTML = refunds.length
+    ? `<table class="responsive"><tbody>${refunds.slice(0,6).map(b=>`
+        <tr>
+          <td data-label="User"><span>${esc(b.driverName||userName(b.uid))}<span class="sub">${esc(fmtDate(b.cancelledAt||b.bookedAt))}</span></span></td>
+          <td data-label="Slot"><span class="slot-tag">${Number(b.slot)}</span></td>
+          <td data-label="Amount" class="num"><b>${rupees(b.refundAmount||b.amount)}</b></td>
+          <td class="actions"><button class="btn btn-sign btn-sm" onclick="openRefund('${b.uid}','${b.id}')">Refund</button></td>
+        </tr>`).join('')}</tbody></table>`
+    : '<div class="empty"><b>Nothing to refund</b>Cancelled bookings that need a refund will show up here.</div>';
+
+  $('ov-lot').innerHTML = list.length
+    ? list.map(s=>{
+        const st=slotState(s.number);
+        const label={empty:'Free',filled:'Occupied',reserved:'Reserved',unknown:'No data'}[st];
+        return `<div class="mini-slot ${st}" title="${esc(s.zone)}"><b>${s.number}</b><span>${label}</span></div>`;
+      }).join('')
+    : '<div class="empty" style="width:100%">No slots yet.</div>';
+}
+
+function renderSlots(){
+  const list=slotList(), colors=zoneColors();
+  $('slots-empty').classList.toggle('hidden', list.length>0);
+  $('slots-table').classList.toggle('hidden', list.length===0);
+  $('zone-list').innerHTML=[...new Set(list.map(s=>s.zone))].map(z=>`<option value="${esc(z)}">`).join('');
+  if(!list.length){ $('slots-table').innerHTML=''; return; }
+  $('slots-table').innerHTML=`
+    <thead><tr><th>Slot</th><th>Zone</th><th>Status</th><th>Source</th><th>Location</th><th style="text-align:right">Actions</th></tr></thead>
+    <tbody>${list.map(s=>{
+      const st=slotState(s.number);
+      const ab=liveBookingFor(s.number);
+      const badge = st==='reserved' ? `<span class="badge b-hold">Reserved until ${new Date(ab.expiresAt).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</span>`
+                  : st==='filled'   ? '<span class="badge b-busy">Occupied</span>'
+                  : st==='empty'    ? '<span class="badge b-free">Free</span>'
+                  : '<span class="badge b-mute">No data</span>';
+      const manual = !s.sensor ? `
+          <button class="btn btn-secondary btn-sm" onclick="setManualStatus(${s.number},'${st==='filled'?'empty':'filled'}')" ${st==='reserved'?'disabled title="Slot is reserved"':''}>Mark ${st==='filled'?'free':'occupied'}</button>` : '';
+      return `<tr>
+        <td data-label="Slot"><span class="slot-tag">${s.number}</span></td>
+        <td data-label="Zone"><span><span class="zone-dot" style="background:${colors[(s.zone||'').toLowerCase()]}"></span>${esc(s.zone)}${s.zoneNote?`<span class="sub">${esc(s.zoneNote)}</span>`:''}</span></td>
+        <td data-label="Status">${badge}</td>
+        <td data-label="Source">${s.sensor?'Live sensor':'Manual'}</td>
+        <td data-label="Location" class="num">${s.lat && s.lng ? `<a href="https://www.google.com/maps?q=${Number(s.lat)},${Number(s.lng)}" target="_blank" rel="noopener">${Number(s.lat).toFixed(5)}, ${Number(s.lng).toFixed(5)}</a>` : '<span class="sub">Not set</span>'}</td>
+        <td class="actions">${manual}
+          <button class="btn btn-secondary btn-sm" onclick="openSlotModal('${s.key}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="removeSlot('${s.key}')">Remove</button>
+        </td></tr>`;
+    }).join('')}</tbody>`;
+}
+
+function renderBookings(){
+  const rows=bookingRows();
+  const counts={all:rows.length};
+  rows.forEach(b=>{ const k=bookingState(b); counts[k]=(counts[k]||0)+1; });
+  const chips=[['all','All'],['active','Active'],['refund','Refund to process'],['refunded','Refunded'],['cancelled','Cancelled'],['expired','Expired']];
+  $('bk-chips').innerHTML=chips.map(([k,l])=>`<button class="chip${bkFilter===k?' active':''}" onclick="bkFilter='${k}';renderBookings()">${l} <span class="n">${counts[k]||0}</span></button>`).join('');
+  const q=$('bk-search').value.trim().toLowerCase();
+  const shown=rows.filter(b=>{
+    if(bkFilter!=='all' && bookingState(b)!==bkFilter) return false;
+    if(!q) return true;
+    const p=profileOf(b.uid);
+    return [b.driverName,b.vehicle,b.txnId,b.bookingId,p.email,p.displayName,p.phone,'slot '+b.slot].some(v=>String(v||'').toLowerCase().includes(q));
+  });
+  $('bk-empty').classList.toggle('hidden', shown.length>0);
+  $('bk-table').innerHTML = shown.length ? `
+    <thead><tr><th>Booked</th><th>Slot</th><th>Driver</th><th>Account</th><th>Duration</th><th>Amount</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+    <tbody>${shown.map(b=>bookingRowHtml(b)).join('')}</tbody>` : '';
+}
+function bookingRowHtml(b){
+  const st=bookingState(b), [label,cls]=BK_LABEL[st], p=profileOf(b.uid);
+  return `<tr>
+    <td data-label="Booked">${esc(fmtDate(b.bookedAt))}</td>
+    <td data-label="Slot"><span class="slot-tag">${Number(b.slot)}</span></td>
+    <td data-label="Driver"><span>${esc(b.driverName||'–')}<span class="sub plate">${esc(b.vehicle||'')}</span></span></td>
+    <td data-label="Account"><a href="#" onclick="event.preventDefault();openDrawer('${b.uid}')">${esc(p.email || userName(b.uid))}</a></td>
+    <td data-label="Duration">${esc(b.duration||'–')}</td>
+    <td data-label="Amount" class="num"><span><b>${rupees(b.amount)}</b>${b.refundStatus==='refunded'?`<span class="sub">Refunded ${rupees(b.refundAmount)}</span>`:''}</span></td>
+    <td data-label="Status"><span class="badge ${cls}">${label}</span></td>
+    <td class="actions">${bookingActions(b)}</td></tr>`;
+}
+function bookingActions(b){
+  const st=bookingState(b), out=[];
+  if(st==='active')  out.push(`<button class="btn btn-danger btn-sm" onclick="cancelBooking('${b.uid}','${b.id}')">Cancel</button>`);
+  if(st==='refund')  out.push(`<button class="btn btn-sign btn-sm" onclick="openRefund('${b.uid}','${b.id}')">Refund</button>`);
+  if(st==='cancelled' && Number(b.amount)>0) out.push(`<button class="btn btn-secondary btn-sm" onclick="openRefund('${b.uid}','${b.id}')">Refund</button>`);
+  if(b.txnId) out.push(`<a class="btn btn-ghost btn-sm" href="https://dashboard.razorpay.com/app/payments/${encodeURIComponent(b.txnId)}" target="_blank" rel="noopener" title="Open payment in Razorpay"><svg class="i"><use href="#i-ext"/></svg></a>`);
+  return out.join('');
+}
+
+function userRows(){
+  const uids=new Set([...Object.keys(users), ...Object.keys(allBookings)]);
+  return [...uids].map(uid=>{
+    const p=profileOf(uid);
+    const bks=Object.values(allBookings[uid]||{}).filter(Boolean);
+    const spent=bks.filter(b=>b.status!=='refund_pending').reduce((s,b)=>s+(Number(b.amount)||0)-(b.refundStatus==='refunded'?Number(b.refundAmount)||0:0),0);
+    const activeNow=bks.some(b=>b.status==='active' && b.expiresAt>now());
+    return {uid, p, count:bks.length, spent, activeNow, guest:!!p.isGuest || (!p.email && !p.displayName)};
+  }).sort((a,b)=>(b.p.lastSeen||0)-(a.p.lastSeen||0));
+}
+function renderUsers(){
+  const rows=userRows();
+  const counts={all:rows.length, registered:rows.filter(r=>!r.guest).length, guest:rows.filter(r=>r.guest).length, active:rows.filter(r=>r.activeNow).length};
+  $('us-chips').innerHTML=[['all','All'],['registered','Registered'],['guest','Guests'],['active','Parked now']]
+    .map(([k,l])=>`<button class="chip${usFilter===k?' active':''}" onclick="usFilter='${k}';renderUsers()">${l} <span class="n">${counts[k]}</span></button>`).join('');
+  const q=$('us-search').value.trim().toLowerCase();
+  const shown=rows.filter(r=>{
+    if(usFilter==='registered' && r.guest) return false;
+    if(usFilter==='guest' && !r.guest) return false;
+    if(usFilter==='active' && !r.activeNow) return false;
+    if(!q) return true;
+    return [r.p.displayName,r.p.email,r.p.vehicle,r.p.phone,r.p.department,r.uid].some(v=>String(v||'').toLowerCase().includes(q));
+  });
+  $('us-empty').classList.toggle('hidden', shown.length>0);
+  $('us-table').innerHTML = shown.length ? `
+    <thead><tr><th>Name</th><th>Vehicle</th><th>Phone</th><th>Department</th><th>Bookings</th><th>Spent</th><th>Last seen</th></tr></thead>
+    <tbody>${shown.map(r=>`
+      <tr class="clickable" onclick="openDrawer('${r.uid}')">
+        <td data-label="Name"><span><b>${esc(userName(r.uid))}</b>${r.guest?' <span class="badge b-mute">Guest</span>':''}${r.activeNow?' <span class="badge b-free">Parked</span>':''}<span class="sub">${esc(r.p.email||'')}</span></span></td>
+        <td data-label="Vehicle" class="plate">${esc(r.p.vehicle||'–')}</td>
+        <td data-label="Phone">${esc(r.p.phone||'–')}</td>
+        <td data-label="Department">${esc(r.p.department||'–')}</td>
+        <td data-label="Bookings" class="num">${r.count}</td>
+        <td data-label="Spent" class="num">${rupees(r.spent)}</td>
+        <td data-label="Last seen">${esc(fmtDate(r.p.lastSeen))}</td>
+      </tr>`).join('')}</tbody>` : '';
+}
+
+/* ══════════════════════════════════════════════════
+   SLOTS — add / edit / remove / manual status
+══════════════════════════════════════════════════ */
+function openSlotModal(key){
+  editingSlotKey=key||null;
+  const s=key ? slots[key] : null;
+  const next=Math.max(0,...slotList().map(x=>x.number))+1;
+  $('sm-title').textContent = s ? `Edit slot ${s.number}` : 'Add slot';
+  $('sm-sub').textContent   = s ? 'Changes show on the user dashboard straight away.' : 'The new slot is free until a car parks or you change it.';
+  $('sm-save').textContent  = s ? 'Save changes' : 'Add slot';
+  $('sm-num').value   = s ? s.number : next;
+  $('sm-num').disabled= !!s;
+  $('sm-zone').value  = s ? s.zone||'' : (slotList().at(-1)?.zone||'');
+  $('sm-note').value  = s ? s.zoneNote||'' : (slotList().at(-1)?.zoneNote||'');
+  $('sm-lat').value   = s && s.lat ? s.lat : '';
+  $('sm-lng').value   = s && s.lng ? s.lng : '';
+  $('sm-sensor').checked = !!(s && s.sensor);
+  $('sm-err').textContent='';
+  openOverlay('slot-modal');
+  setTimeout(()=>$(s?'sm-zone':'sm-num').focus(), 50);
+}
+function useMyLocation(){
+  if(!navigator.geolocation){ toast('This browser can\'t share location.','error'); return; }
+  navigator.geolocation.getCurrentPosition(
+    p=>{ $('sm-lat').value=p.coords.latitude.toFixed(6); $('sm-lng').value=p.coords.longitude.toFixed(6); },
+    ()=>toast('Location access is off. Type the coordinates instead.','error'),
+    {enableHighAccuracy:true, timeout:8000});
+}
+async function saveSlot(){
+  const err=$('sm-err'); err.textContent='';
+  const num=Number($('sm-num').value);
+  const zone=$('sm-zone').value.trim();
+  const latS=$('sm-lat').value.trim(), lngS=$('sm-lng').value.trim();
+  if(!Number.isInteger(num) || num<1 || num>999){ err.textContent='Slot number must be a whole number from 1 to 999.'; return; }
+  if(!zone){ err.textContent='Enter a zone, for example North Wing.'; return; }
+  if((latS && !lngS) || (!latS && lngS)){ err.textContent='Enter both latitude and longitude, or leave both empty.'; return; }
+  const lat=latS?Number(latS):null, lng=lngS?Number(lngS):null;
+  if(latS && (!isFinite(lat) || lat<-90 || lat>90 || !isFinite(lng) || lng<-180 || lng>180)){ err.textContent='Coordinates look wrong. Latitude is −90 to 90, longitude −180 to 180.'; return; }
+  const key=editingSlotKey || `slot${num}`;
+  if(!editingSlotKey && slots[key]){ err.textContent=`Slot ${num} already exists. Pick another number.`; return; }
+  const data={number:num, zone, zoneNote:$('sm-note').value.trim(), lat, lng, sensor:$('sm-sensor').checked, updatedAt:TS};
+  const btn=$('sm-save'); btn.disabled=true;
+  try{
+    if(editingSlotKey){
+      await db.ref(`/slots/${key}`).update(data);
+    } else {
+      await db.ref(`/slots/${key}`).set({...data, createdAt:TS});
+      if(!parking[key]) await db.ref(`/parking/${key}`).set({status:'empty', slot:num, distance:-1, updated:TS});
+    }
+    closeOverlay('slot-modal');
+    toast(editingSlotKey ? `Slot ${num} updated` : `Slot ${num} added`);
+  }catch(e){ err.textContent='Could not save: '+e.message; }
+  btn.disabled=false;
+}
+function removeSlot(key){
+  const s=slots[key]; if(!s) return;
+  const ab=liveBookingFor(s.number);
+  if(ab){ toast(`Slot ${s.number} has an active booking. Cancel it in Bookings first.`,'error'); return; }
+  confirmAction({
+    title:`Remove slot ${s.number}?`,
+    msg:`It disappears from the user dashboard right away. Past bookings for this slot stay in the records.`,
+    ok:'Remove slot',
+    run: async ()=>{
+      await db.ref(`/slots/${key}`).remove();
+      await db.ref(`/parking/${key}`).remove().catch(()=>{});
+      toast(`Slot ${s.number} removed`);
+    }
+  });
+}
+async function setManualStatus(num, status){
+  try{
+    await db.ref(`/parking/slot${num}`).set({status, slot:num, distance:-1, updated:TS});
+    toast(`Slot ${num} marked ${status==='filled'?'occupied':'free'}`);
+  }catch(e){ toast('Could not update: '+e.message,'error'); }
+}
+async function importDefaults(){
+  try{
+    const updates={};
+    Object.entries(DEFAULT_SLOTS).forEach(([k,v])=>{ updates[`slots/${k}`]={...v, createdAt:TS, updatedAt:TS}; });
+    await db.ref().update(updates);
+    toast('6 default slots imported');
+  }catch(e){ toast('Import failed: '+e.message,'error'); }
+}
+
+/* ══════════════════════════════════════════════════
+   BOOKINGS — cancel + refund
+══════════════════════════════════════════════════ */
+function findBooking(uid,id){ const b=allBookings[uid]?.[id]; return b ? {...b, uid, id} : null; }
+function cancelBooking(uid,id){
+  const b=findBooking(uid,id); if(!b) return;
+  confirmAction({
+    title:`Cancel booking for slot ${b.slot}?`,
+    msg:`${b.driverName||userName(uid)} (${b.vehicle||'no vehicle'}) loses this booking and the slot becomes free.`,
+    check: Number(b.amount)>0 ? `Add a refund of ${rupees(b.amount)} to "Refund to process"` : null,
+    ok:'Cancel booking',
+    run: async (withRefund)=>{
+      const ref=db.ref(`/active_bookings/slot${b.slot}`);
+      const cur=(await ref.get()).val();
+      if(cur && cur.bookingId===b.bookingId) await ref.remove();
+      await db.ref(`/bookings/${uid}/${id}`).update({
+        status:'cancelled', cancelledBy:'admin', cancelledByEmail:me.email||'', cancelledAt:TS,
+        refundStatus: withRefund ? 'requested' : 'none', refundAmount: withRefund ? Number(b.amount)||0 : 0
+      });
+      toast('Booking cancelled');
+    }
+  });
+}
+function openRefund(uid,id){
+  const b=findBooking(uid,id); if(!b) return;
+  refundTarget={uid,id};
+  const p=profileOf(uid);
+  $('rf-summary').innerHTML=`
+    <dt>Driver</dt><dd>${esc(b.driverName||userName(uid))}</dd>
+    <dt>Account</dt><dd>${esc(p.email||'Guest')}</dd>
+    <dt>Slot</dt><dd>Slot ${Number(b.slot)}, ${esc(b.duration||'')}</dd>
+    <dt>Paid</dt><dd>${rupees(b.amount)} on ${esc(fmtDay(b.bookedAt))}</dd>
+    <dt>Payment ID</dt><dd>${esc(b.txnId||'–')}</dd>`;
+  const link=$('rf-rzp');
+  if(b.txnId){ link.href=`https://dashboard.razorpay.com/app/payments/${encodeURIComponent(b.txnId)}`; link.classList.remove('hidden'); }
+  else link.classList.add('hidden');
+  $('rf-amount').value = Number(b.refundAmount)||Number(b.amount)||'';
+  $('rf-amount').max = Number(b.amount)||'';
+  $('rf-ref').value=''; $('rf-note').value=''; $('rf-err').textContent='';
+  openOverlay('refund-modal');
+}
+async function saveRefund(){
+  const b=refundTarget && findBooking(refundTarget.uid, refundTarget.id); if(!b) return;
+  const err=$('rf-err'); err.textContent='';
+  const amt=Number($('rf-amount').value), ref=$('rf-ref').value.trim();
+  if(!(amt>0)){ err.textContent='Enter the amount you refunded.'; return; }
+  if(amt>(Number(b.amount)||0)){ err.textContent=`The refund can't be more than the ${rupees(b.amount)} paid.`; return; }
+  if(ref && !/^rfnd_[A-Za-z0-9]+$/.test(ref)){ err.textContent='Razorpay refund IDs start with rfnd_. Check and paste it again.'; return; }
+  const btn=$('rf-save'); btn.disabled=true;
+  try{
+    const upd={refundStatus:'refunded', refundAmount:amt, refundRef:ref, refundNote:$('rf-note').value.trim(), refundedAt:TS, refundedBy:me.email||me.uid};
+    if(b.status==='active') Object.assign(upd,{status:'cancelled', cancelledBy:'admin', cancelledAt:TS});
+    if(b.status==='active'){
+      const r=db.ref(`/active_bookings/slot${b.slot}`); const cur=(await r.get()).val();
+      if(cur && cur.bookingId===b.bookingId) await r.remove();
+    }
+    await db.ref(`/bookings/${b.uid}/${b.id}`).update(upd);
+    closeOverlay('refund-modal');
+    toast(`Refund of ${rupees(amt)} recorded`);
+  }catch(e){ err.textContent='Could not save: '+e.message; }
+  btn.disabled=false;
+}
+
+/* ══════════════════════════════════════════════════
+   USERS — drawer + edit
+══════════════════════════════════════════════════ */
+function openDrawer(uid){
+  drawerUid=uid;
+  const p=profileOf(uid);
+  $('dr-in-name').value=p.displayName||'';
+  $('dr-in-vehicle').value=p.vehicle||'';
+  $('dr-in-phone').value=p.phone||'';
+  $('dr-in-dept').value=p.department||'';
+  $('dr-err').textContent='';
+  renderDrawer();
+  $('drawer').classList.add('open');
+}
+function closeDrawer(){ $('drawer').classList.remove('open'); drawerUid=null; }
+function renderDrawer(){
+  const uid=drawerUid, p=profileOf(uid);
+  const name=userName(uid);
+  $('dr-avatar').textContent=(name[0]||'?').toUpperCase();
+  $('dr-name').textContent=name;
+  $('dr-email').textContent=p.email || (p.isGuest?'Guest account':'No email on file');
+  $('dr-meta').innerHTML=`
+    <dt>Type</dt><dd>${p.isGuest?'Guest':'Registered'}</dd>
+    <dt>Joined</dt><dd>${esc(fmtDay(p.createdAt))}</dd>
+    <dt>Last seen</dt><dd>${esc(fmtDate(p.lastSeen))}</dd>
+    <dt>UID</dt><dd style="font-size:12px">${esc(uid)}</dd>`;
+  const bks=Object.entries(allBookings[uid]||{}).map(([id,b])=>({...b,uid,id})).sort((a,b)=>(b.bookedAt||0)-(a.bookedAt||0));
+  $('dr-bookings').innerHTML = bks.length ? bks.map(b=>{
+    const [label,cls]=BK_LABEL[bookingState(b)];
+    return `<div class="bk-item">
+      <div class="bk-top"><span><span class="slot-tag">${Number(b.slot)}</span> <b style="margin-left:6px">${rupees(b.amount)}</b></span><span class="badge ${cls}">${label}</span></div>
+      <div class="bk-line">${esc(fmtDate(b.bookedAt))}, ${esc(b.duration||'')}${b.vehicle?`, <span class="plate">${esc(b.vehicle)}</span>`:''}</div>
+      ${b.refundStatus==='refunded'?`<div class="bk-line">Refunded ${rupees(b.refundAmount)}${b.refundRef?` (${esc(b.refundRef)})`:''}</div>`:''}
+      <div class="bk-btns">${bookingActions(b)}</div>
+    </div>`;
+  }).join('') : '<div class="empty" style="padding:20px">No bookings yet.</div>';
+}
+async function saveUser(){
+  const uid=drawerUid; if(!uid) return;
+  const err=$('dr-err'); err.textContent='';
+  const name=$('dr-in-name').value.trim();
+  const vehicle=normalizeVehicle($('dr-in-vehicle').value);
+  const phone=$('dr-in-phone').value.trim();
+  if(vehicle && !isValidVehicle(vehicle)){ err.textContent='Invalid vehicle number. Example: TS 09 AB 1234'; return; }
+  if(phone && !/^\+?[0-9 ]{7,15}$/.test(phone)){ err.textContent='Enter a valid phone number.'; return; }
+  const btn=$('dr-save'); btn.disabled=true;
+  try{
+    await db.ref(`/users/${uid}/profile`).update({
+      displayName:name, vehicle, phone, department:$('dr-in-dept').value.trim(),
+      updatedAt:TS, updatedBy:me.email||me.uid
+    });
+    $('dr-in-vehicle').value=vehicle;
+    toast('User details saved');
+  }catch(e){ err.textContent='Could not save: '+e.message; }
+  btn.disabled=false;
+}
+
+/* ══════════════════════════════════════════════════
+   SETTINGS
+══════════════════════════════════════════════════ */
+function fillSettings(){
+  if(document.activeElement!==$('st-rzp')) $('st-rzp').value=config.razorpayKeyId||'';
+  if(document.activeElement!==$('st-stay')) $('st-stay').value=config.defaultStayMin||'';
+}
+async function saveRazorpayKey(){
+  const v=$('st-rzp').value.trim(), msg=$('st-rzp-msg');
+  if(!/^rzp_(test|live)_[A-Za-z0-9]+$/.test(v)){ msg.className='save-msg err'; msg.textContent='Key IDs start with rzp_test_ or rzp_live_.'; return; }
+  try{ await db.ref('/config/razorpayKeyId').set(v); msg.className='save-msg ok'; msg.textContent='Saved. The user dashboard uses it straight away.'; }
+  catch(e){ msg.className='save-msg err'; msg.textContent='Could not save: '+e.message; }
+}
+async function saveStay(){
+  const v=Number($('st-stay').value), msg=$('st-stay-msg');
+  if(!(v>=5 && v<=720)){ msg.className='save-msg err'; msg.textContent='Enter a value from 5 to 720 minutes.'; return; }
+  try{ await db.ref('/config/defaultStayMin').set(v); msg.className='save-msg ok'; msg.textContent='Saved.'; }
+  catch(e){ msg.className='save-msg err'; msg.textContent='Could not save: '+e.message; }
+}
+
+/* ══════════════════════════════════════════════════
+   OVERLAYS
+══════════════════════════════════════════════════ */
+function openOverlay(id){ $(id).classList.add('open'); }
+function closeOverlay(id){ $(id).classList.remove('open'); }
+function confirmAction({title,msg,ok,check,run}){
+  $('cf-title').textContent=title;
+  $('cf-msg').textContent=msg;
+  $('cf-check-row').classList.toggle('hidden', !check);
+  $('cf-check').checked=true;
+  $('cf-check-label').textContent=check||'';
+  const btn=$('cf-ok'); btn.textContent=ok; btn.disabled=false;
+  btn.onclick=async ()=>{
+    btn.disabled=true;
+    try{ await run($('cf-check').checked); closeOverlay('confirm-modal'); }
+    catch(e){ toast('Failed: '+e.message,'error'); }
+    btn.disabled=false;
+  };
+  openOverlay('confirm-modal');
+}
+document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click', e=>{ if(e.target===o) closeOverlay(o.id); }));
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Escape') return;
+  document.querySelectorAll('.overlay.open').forEach(o=>closeOverlay(o.id));
+  closeDrawer();
+});
+setInterval(()=>{ if(me) queueRender(); }, 15000);
+</script>
+</body>
+</html>

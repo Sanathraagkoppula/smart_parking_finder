@@ -35,7 +35,7 @@ button{cursor:pointer;background:none;border:none}
 .i{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 
 /* ── Buttons ───────────────────────────── */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:8px;font-weight:600;font-size:14px;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:8px;font-weight:600;font-size:14px;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
 .btn-primary{background:var(--blue);color:#fff}
 .btn-primary:hover{background:var(--blue-ink)}
 .btn-primary:disabled{background:#8A8D91;color:#E6E6E6;cursor:not-allowed}
@@ -161,7 +161,7 @@ button{cursor:pointer;background:none;border:none}
 
 /* ── The lot ───────────────────────────── */
 .lot-wrap{background:var(--asphalt);border-radius:14px;overflow:hidden}
-.lot{display:flex;gap:32px;padding:24px 28px 0}
+.lot{display:flex;flex-wrap:wrap;gap:28px 32px;padding:24px 28px 0}
 .zone{flex:1;min-width:0;display:flex;flex-direction:column}
 .zone.hidden{display:none}
 .zone-head{display:flex;align-items:center;gap:8px;color:#C9D1DA;font-size:13px;font-weight:600;margin-bottom:14px}
@@ -289,6 +289,9 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
 .bk-status.expired{background:var(--soft);color:var(--ink-3)}
 .bk-status.cancelled{background:var(--busy-tint);color:var(--busy)}
 .bk-status.refund{background:var(--hold-tint);color:var(--hold)}
+.bk-status.refunded{background:var(--free-tint);color:var(--free)}
+.bk-refund{font-size:13px;margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--hold-tint);color:var(--hold)}
+.bk-refund.ok{background:var(--free-tint);color:var(--free)}
 .bk-meta{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px;margin-top:10px}
 .bk-meta dt{color:var(--ink-3)}
 .bk-meta dd{color:var(--ink);text-align:right}
@@ -356,6 +359,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
 @media(max-width:900px){
   .auth-art{display:none}
   .lot{flex-direction:column;gap:24px}
+  .zone{max-width:none!important}
   .top-actions .btn-label{display:none}
   .occ-bar{width:140px}
 }
@@ -392,6 +396,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
   <symbol id="i-nav" viewBox="0 0 24 24"><path d="M3 11 21 3l-8 18-2-8z"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V6z"/></symbol>
   <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h10"/></symbol>
   <symbol id="car" viewBox="0 0 60 104">
     <rect x="3" y="10" width="6" height="16" rx="3" fill="#11161B"/><rect x="51" y="10" width="6" height="16" rx="3" fill="#11161B"/>
@@ -486,6 +491,9 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
       <button class="btn btn-secondary loc-chip" onclick="changeLocation()" title="Change area">
         <svg class="i"><use href="#i-pin"/></svg><span id="header-loc-name">All Areas</span><svg class="i"><use href="#i-chev"/></svg>
       </button>
+      <a class="btn btn-ghost" id="admin-link" href="admin.html" style="display:none" title="Admin panel">
+        <svg class="i"><use href="#i-shield"/></svg><span class="btn-label">Admin</span>
+      </a>
       <button class="btn btn-ghost" onclick="openBookingsPanel()" title="My bookings">
         <svg class="i"><use href="#i-ticket"/></svg><span class="btn-label">My bookings</span>
       </button>
@@ -686,33 +694,60 @@ const auth = firebase.auth();
 /* ══════════════════════════════════════════════════
    CONSTANTS
 ══════════════════════════════════════════════════ */
-const RAZORPAY_KEY       = "rzp_test_TjqcMpp7lHcIX3"; // key_id is public; never put key_secret here
+const RAZORPAY_KEY       = "rzp_test_Tesq5yFsimrsOG"; // fallback only — live value comes from /config/razorpayKeyId in Firebase
 const HOLD_MS            = 5 * 60 * 1000;              // slot hold while paying
 const CHECKOUT_TIMEOUT_S = 240;                        // Razorpay closes before the hold expires
 const EXPIRY_GRACE_MS    = 3000;                       // margin vs. server clock in rules
 const DEFAULT_STAY_MIN   = 60;                         // assumed stay until real history exists
 
-const SLOT_COORDS = {
-  slot1:{lat:17.96950,lng:79.59450,label:'North Wing — Slot 1'},
-  slot2:{lat:17.96930,lng:79.59430,label:'North Wing — Slot 2'},
-  slot3:{lat:17.96880,lng:79.59480,label:'South Wing — Slot 3'},
-  slot4:{lat:17.96860,lng:79.59460,label:'South Wing — Slot 4'},
-  slot5:{lat:17.96820,lng:79.59420,label:'Main Gate — Slot 5'},
-  slot6:{lat:17.96800,lng:79.59400,label:'Main Gate — Slot 6'},
+// Fallback layout, used until an admin adds slots in /slots (admin.html).
+const DEFAULT_SLOTS = {
+  slot1:{number:1, zone:'North Wing', zoneNote:'Near admin block', lat:17.96950, lng:79.59450, sensor:true},
+  slot2:{number:2, zone:'North Wing', zoneNote:'Near admin block', lat:17.96930, lng:79.59430, sensor:false},
+  slot3:{number:3, zone:'South Wing', zoneNote:'Near labs',        lat:17.96880, lng:79.59480, sensor:false},
+  slot4:{number:4, zone:'South Wing', zoneNote:'Near labs',        lat:17.96860, lng:79.59460, sensor:false},
+  slot5:{number:5, zone:'Main Gate',  zoneNote:'Entrance',         lat:17.96820, lng:79.59420, sensor:false},
+  slot6:{number:6, zone:'Main Gate',  zoneNote:'Entrance',         lat:17.96800, lng:79.59400, sensor:false},
 };
-const ZONES = [
-  {id:'north', name:'North Wing', note:'Near admin block', color:'#3B82F6', slots:[1,2]},
-  {id:'south', name:'South Wing', note:'Near labs',        color:'#F97316', slots:[3,4]},
-  {id:'main',  name:'Main Gate',  note:'Entrance',         color:'#22C55E', slots:[5,6]},
-];
-const ZONE_MAP   = {1:'North Wing',2:'North Wing',3:'South Wing',4:'South Wing',5:'Main Gate',6:'Main Gate'};
-const ZONE_COLOR = {1:'#3b82f6',2:'#3b82f6',3:'#f97316',4:'#f97316',5:'#22c55e',6:'#22c55e'};
-const LOCATIONS = [
-  {id:'all',  name:'All Areas',  color:'#7B8794', slots:[1,2,3,4,5,6], desc:'Every slot on campus'},
-  {id:'north',name:'North Wing', color:'#3B82F6', slots:[1,2],           desc:'2 slots near the admin block'},
-  {id:'south',name:'South Wing', color:'#F97316', slots:[3,4],           desc:'2 slots near the labs'},
-  {id:'main', name:'Main Gate',  color:'#22C55E', slots:[5,6],           desc:'2 slots at the entrance'},
-];
+const ZONE_PALETTE = ['#3B82F6','#F97316','#22C55E','#A855F7','#EC4899','#14B8A6','#EAB308','#64748B'];
+const KNOWN_ZONE_COLORS = {'north wing':'#3B82F6','south wing':'#F97316','main gate':'#22C55E'};
+
+let SLOT_NUMS=[], SLOT_COORDS={}, ZONES=[], ZONE_MAP={}, LOCATIONS=[];
+let slotsUsingDefault=true;
+
+function slugify(v){ return String(v||'zone').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'zone'; }
+function applySlotConfig(raw){
+  slotsUsingDefault = !raw || !Object.keys(raw).length;
+  const src = slotsUsingDefault ? DEFAULT_SLOTS : raw;
+  const list = Object.values(src)
+    .filter(x=>x && Number.isInteger(Number(x.number)) && Number(x.number)>0 && x.active!==false)
+    .map(x=>({...x, number:Number(x.number), zone:String(x.zone||'Parking').trim()||'Parking'}))
+    .sort((a,b)=>a.number-b.number);
+  SLOT_NUMS = list.map(x=>x.number);
+  SLOT_COORDS={}; ZONE_MAP={};
+  const zones=new Map();
+  list.forEach(x=>{
+    ZONE_MAP[x.number]=x.zone;
+    if(isFinite(x.lat) && isFinite(x.lng) && x.lat!=='' && x.lng!=='')
+      SLOT_COORDS[`slot${x.number}`]={lat:Number(x.lat), lng:Number(x.lng), label:`${x.zone}, Slot ${x.number}`};
+    const key=slugify(x.zone);
+    if(!zones.has(key)) zones.set(key,{id:key, name:x.zone, note:x.zoneNote||'', slots:[]});
+    const z=zones.get(key); z.slots.push(x.number); if(!z.note && x.zoneNote) z.note=x.zoneNote;
+  });
+  const used=new Set([...zones.values()].map(z=>KNOWN_ZONE_COLORS[z.name.toLowerCase()]).filter(Boolean));
+  const freeCols=ZONE_PALETTE.filter(c=>!used.has(c)); let ci=0;
+  ZONES=[...zones.values()].map(z=>({...z, color:KNOWN_ZONE_COLORS[z.name.toLowerCase()]||(freeCols.length?freeCols[ci++%freeCols.length]:ZONE_PALETTE[ci++%ZONE_PALETTE.length])}));
+  LOCATIONS=[{id:'all', name:'All Areas', color:'#7B8794', slots:[...SLOT_NUMS], desc:`Every slot on campus (${SLOT_NUMS.length})`}]
+    .concat(ZONES.map(z=>({id:z.id, name:z.name, color:z.color, slots:z.slots,
+      desc:`${z.slots.length} slot${z.slots.length!==1?'s':''}${z.note?' · '+z.note:''}`})));
+}
+function slotsForLocation(id){
+  if(!id || id==='all' || id==='custom') return [...SLOT_NUMS];
+  const z=ZONES.find(z=>z.id===id);
+  return z ? [...z.slots] : [...SLOT_NUMS];
+}
+applySlotConfig(null);
+
 const DURATIONS = [
   {label:'30 min',  mins:30,  price:10 },
   {label:'1 hr',    mins:60,  price:20 },
@@ -741,7 +776,9 @@ let activeBookings    = {};
 let myBookings        = {};
 let selectedLocId     = null;
 let selectedLocName   = '';
-let visibleSlots      = [1,2,3,4,5,6];
+let visibleSlots      = [];
+let slotsListener     = null;
+let defaultStayMin    = DEFAULT_STAY_MIN;
 let activeFilter      = 'all';
 let bookingSlot       = null;
 let selectedDurIdx    = 1;
@@ -757,6 +794,7 @@ let paymentInProgress = false;
 let finalizing        = false;
 let listeners         = [];
 let slotHistory       = {};
+let razorpayKey       = RAZORPAY_KEY;
 const removing        = new Set();
 
 /* ══════════════════════════════════════════════════
@@ -821,7 +859,7 @@ async function doSignup(){
     const c = await auth.createUserWithEmailAndPassword(e, p);
     await c.user.updateProfile({displayName: n});
     userProfile = {displayName:n, vehicle:v, phone:'', department:'', avatarColor:0};
-    await db.ref(`/users/${c.user.uid}/profile`).set({...userProfile, createdAt:firebase.database.ServerValue.TIMESTAMP, updatedAt:firebase.database.ServerValue.TIMESTAMP});
+    await db.ref(`/users/${c.user.uid}/profile`).update({...userProfile, email:e, isGuest:false, createdAt:firebase.database.ServerValue.TIMESTAMP, updatedAt:firebase.database.ServerValue.TIMESTAMP});
     document.getElementById('user-name').textContent = n;
     document.getElementById('user-avatar').textContent = n[0].toUpperCase();
   }catch(err){ setAuthLoading('signup-btn', false); showAuthError(friendlyAuthError(err.code)); }
@@ -853,6 +891,8 @@ function friendlyAuthError(code){
 }
 function resetSession(){
   stopAllListeners();
+  stopSlotsListener();
+  document.getElementById('admin-link').style.display='none';
   stopCountdownTimer();
   slotData={}; activeBookings={}; myBookings={}; userProfile={}; slotHistory={};
   avatarColorIdx=0; appInited=false; bookingSlot=null; currentHold=null;
@@ -865,10 +905,40 @@ function resetSession(){
   closeBookingsPanel();
   closeConfirmDialog();
 }
+function startSlotsListener(){
+  if(slotsListener) return;
+  const ref=db.ref('/slots');
+  const h=ref.on('value', snap=>onSlotsChanged(snap.val()), ()=>onSlotsChanged(null));
+  slotsListener={ref,h};
+}
+function stopSlotsListener(){ if(slotsListener){ slotsListener.ref.off('value', slotsListener.h); slotsListener=null; } }
+function onSlotsChanged(raw){
+  applySlotConfig(raw);
+  if(document.getElementById('location-overlay').style.display==='flex' && !pendingLocId) buildLocCards();
+  if(selectedLocId){
+    const loc=LOCATIONS.find(l=>l.id===selectedLocId);
+    if(!loc && selectedLocId!=='custom'){ selectedLocId='all'; selectedLocName='All Areas'; }
+    visibleSlots=slotsForLocation(selectedLocId);
+    document.getElementById('lc-sub').textContent=`${visibleSlots.length} slot${visibleSlots.length!==1?'s':''}`;
+  }
+  if(appInited){ buildSlots(); updateAllSlotCards(); }
+}
+function syncAccountInfo(user){
+  db.ref(`/users/${user.uid}/profile`).update({
+    email: user.email||'', isGuest: !!user.isAnonymous,
+    lastSeen: firebase.database.ServerValue.TIMESTAMP
+  }).catch(()=>{});
+  db.ref(`/admins/${user.uid}`).get().then(s=>{
+    document.getElementById('admin-link').style.display = s.val()===true ? 'inline-flex' : 'none';
+  }).catch(()=>{});
+}
+
 auth.onAuthStateChanged(user=>{
   if(currentUser && (!user || user.uid!==currentUser.uid)) resetSession();
   currentUser = user;
   if(user){
+    startSlotsListener();
+    syncAccountInfo(user);
     document.getElementById('auth-overlay').style.display='none';
     document.getElementById('app').style.display='none';
     if(!selectedLocId) showLocationPicker();
@@ -965,7 +1035,7 @@ async function saveProfile(){
       displayName, vehicle:newVehicle, phone:newPhone, department:newDept,
       avatarColor:avatarColorIdx, updatedAt:firebase.database.ServerValue.TIMESTAMP
     };
-    await db.ref(`/users/${currentUser.uid}/profile`).set(profileData);
+    await db.ref(`/users/${currentUser.uid}/profile`).update(profileData);
     userProfile = {...profileData, updatedAt:serverNow()};
     document.getElementById('user-name').textContent = displayName;
     document.getElementById('user-avatar').textContent = currentUser.isAnonymous ? 'G' : displayName[0].toUpperCase();
@@ -1039,7 +1109,7 @@ function handleLocSearch(val){
   document.querySelectorAll('.loc-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('lcr-name-text').textContent=q;
   document.getElementById('loc-custom-result').style.display='flex';
-  pendingLocId='custom'; pendingLocName=q; pendingLocSlots=[1,2,3,4,5,6];
+  pendingLocId='custom'; pendingLocName=q; pendingLocSlots=[...SLOT_NUMS];
   document.getElementById('loc-confirm-btn').disabled=false;
   document.getElementById('loc-confirm-btn').textContent=`Show slots for "${q}"`;
 }
@@ -1050,7 +1120,7 @@ function selectCustomLocation(){
 }
 function confirmLocation(){
   if(!pendingLocId || !currentUser) return;
-  selectedLocId=pendingLocId; selectedLocName=pendingLocName; visibleSlots=pendingLocSlots;
+  selectedLocId=pendingLocId; selectedLocName=pendingLocName; visibleSlots=slotsForLocation(pendingLocId);
   document.getElementById('location-overlay').style.display='none';
   showMainApp(currentUser);
 }
@@ -1090,7 +1160,9 @@ function buildSlots(){
   ZONES.forEach(z=>{
     const zone=document.createElement('div');
     zone.className='zone'; zone.id=`zone-${z.id}`;
-    zone.innerHTML=`<div class="zone-head"><span class="zone-dot" style="background:${z.color}"></span>${z.name} <small>${z.note}</small></div><div class="bays"></div>`;
+    zone.style.flex=`${z.slots.length} 1 ${Math.min(z.slots.length,4)*150}px`;
+    zone.style.maxWidth=`${z.slots.length*210}px`;
+    zone.innerHTML=`<div class="zone-head"><span class="zone-dot" style="background:${z.color}"></span>${esc(z.name)} <small>${esc(z.note)}</small></div><div class="bays"></div>`;
     const bays=zone.querySelector('.bays');
     z.slots.forEach(i=>{
       const div=document.createElement('div');
@@ -1145,7 +1217,7 @@ function getSlotState(i){
 }
 function applyVisibility(){
   let shown=0;
-  for(let i=1; i<=6; i++){
+  for(const i of SLOT_NUMS){
     const card=document.getElementById(`card-${i}`); if(!card) continue;
     const state=getSlotState(i);
     const inLoc=visibleSlots.includes(i);
@@ -1161,7 +1233,12 @@ function applyVisibility(){
     if(el) el.classList.toggle('hidden', z.slots.every(i=>document.getElementById(`card-${i}`)?.classList.contains('hidden')));
   });
   const empty=document.getElementById('lot-empty');
-  if(empty) empty.style.display = shown ? 'none' : 'block';
+  if(empty){
+    empty.style.display = shown ? 'none' : 'block';
+    empty.innerHTML = SLOT_NUMS.length
+      ? '<b>No slots match this filter</b>Choose another filter or switch to a different area.'
+      : '<b>No parking slots yet</b>An admin needs to add slots before you can book.';
+  }
 }
 function expiryFor(slotNum, state){
   if(state==='mine'){
@@ -1196,7 +1273,7 @@ function typicalStay(i){
   if(own) return {ms:own, source:'slot'};
   const all=medianStayMs(Object.values(slotHistory).flatMap(h=>Object.values(h||{})));
   if(all) return {ms:all, source:'campus'};
-  return {ms:DEFAULT_STAY_MIN*60000, source:'default'};
+  return {ms:defaultStayMin*60000, source:'default'};
 }
 function occupiedSince(i){
   const sd=slotData[`slot${i}`];
@@ -1221,7 +1298,7 @@ function freeEstimate(i){
 
 function updateAllSlotCards(){
   const labels={mine:'Your booking', reserved:'Reserved', filled:'Occupied', empty:'Free', loading:'Connecting'};
-  for(let i=1; i<=6; i++){
+  for(const i of SLOT_NUMS){
     const card=document.getElementById(`card-${i}`); if(!card) continue;
     const state=getSlotState(i);
     const sd=slotData[`slot${i}`];
@@ -1258,7 +1335,7 @@ function updateAllSlotCards(){
         etaEl.textContent = est.at-serverNow() < 2*60000 ? 'Should be free soon' : `${word} ${fmtClock(est.at)}`;
         etaEl.title = est.source==='slot' ? 'Based on recent stays in this slot'
                     : est.source==='campus' ? 'Based on recent stays across campus'
-                    : `Assumes a ${DEFAULT_STAY_MIN}-minute stay until enough history is recorded`;
+                    : `Assumes a ${defaultStayMin}-minute stay until enough history is recorded`;
       } else {
         etaEl.classList.add('est'); etaEl.textContent='Free time unknown';
       }
@@ -1346,6 +1423,16 @@ function startFirebaseListeners(uid){
     updateAllSlotCards();
   }, ()=>{ banner.style.display='block'; });
 
+  listen('/config/razorpayKeyId', snap=>{
+    const k=snap.val();
+    if(typeof k==='string' && /^rzp_(test|live)_[A-Za-z0-9]+$/.test(k.trim())) razorpayKey=k.trim();
+  });
+  listen('/config/defaultStayMin', snap=>{
+    const v=Number(snap.val());
+    defaultStayMin = v>=5 && v<=720 ? v : DEFAULT_STAY_MIN;
+    updateAllSlotCards();
+  });
+
   listen('/history', snap=>{
     slotHistory=snap.val()||{};
     updateAllSlotCards();
@@ -1371,7 +1458,8 @@ function renderBookingsList(){
   const fmt=t=>new Date(t).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
   container.innerHTML=all.map(b=>{
     const isActive = isBookingLive(b);
-    const status = b.status==='cancelled' ? ['Cancelled','cancelled']
+    const status = b.refundStatus==='refunded' ? ['Refunded','refunded']
+                 : b.status==='cancelled' ? (b.refundStatus==='requested' ? ['Refund requested','refund'] : ['Cancelled','cancelled'])
                  : b.status==='refund_pending' ? ['Refund pending','refund']
                  : isActive ? ['Active','active'] : ['Expired','expired'];
     let countdown='';
@@ -1398,6 +1486,8 @@ function renderBookingsList(){
         ${countdown?`<span class="bk-countdown">${countdown}</span>`:''}
       </div>
       <div class="bk-txn">Payment ID ${esc(b.txnId||'–')}</div>
+      ${b.refundStatus==='refunded'?`<div class="bk-refund ok">Refunded ₹${Number(b.refundAmount)||0}${b.refundRef?` · Ref ${esc(b.refundRef)}`:''}</div>`
+        : b.refundStatus==='requested'?`<div class="bk-refund">Refund of ₹${Number(b.refundAmount)||Number(b.amount)||0} is being processed by the parking admin.</div>`:''}
       ${cancelBtn}
     </div>`;
   }).join('');
@@ -1413,7 +1503,7 @@ function showCancelDialog(bookingId, slotNum){
   document.querySelector('#confirm-dialog .confirm-icon').textContent='!';
   document.getElementById('confirm-title').textContent='Cancel this booking?';
   document.getElementById('confirm-msg').textContent=
-    `Slot ${slotNum} will be released for other drivers right away.\n\nRefunds are processed manually by the parking admin, so keep your payment ID.`;
+    `Slot ${slotNum} will be released for other drivers right away.\n\nA refund request is sent to the parking admin automatically. You'll see "Refunded" here once it's done.`;
   const ok=document.getElementById('confirm-ok-btn');
   ok.style.display=''; ok.disabled=false; ok.textContent='Cancel booking';
   document.getElementById('confirm-cancel-btn').textContent='Keep booking';
@@ -1442,11 +1532,13 @@ async function executeCancel(){
     const ref=db.ref(`/active_bookings/slot${slotNum}`);
     const cur=(await ref.get()).val();
     if(cur && cur.bookedBy===uid && cur.bookingId===bookingId) await ref.remove();
+    const amt=Number(myBookings[bookingId]?.amount)||0;
     await db.ref(`/bookings/${uid}/${bookingId}`).update({
-      status:'cancelled', cancelledAt:firebase.database.ServerValue.TIMESTAMP
+      status:'cancelled', cancelledBy:'user', cancelledAt:firebase.database.ServerValue.TIMESTAMP,
+      refundStatus: amt>0 ? 'requested' : 'none', refundAmount: amt
     });
     closeConfirmDialog();
-    showToast('Booking cancelled. Ask the parking admin for your refund.','success');
+    showToast('Booking cancelled. Refund requested.','success');
   }catch(e){
     btn.disabled=false; btn.textContent='Cancel booking';
     showToast('Couldn\'t cancel the booking. Check your connection and try again.','error');
@@ -1618,7 +1710,7 @@ async function launchRazorpay(){
   const name  = bookingDriver.name||userProfile.displayName||currentUser.displayName||'Guest';
   const email = currentUser.isAnonymous ? '' : (currentUser.email||'');
   const options = {
-    key:         RAZORPAY_KEY,
+    key:         razorpayKey,
     amount:      d.price * 100,
     currency:    'INR',
     name:        'Smart Parking Finder',
@@ -1709,6 +1801,7 @@ async function finalizeBooking(slot, d, paymentId){
     bookingId, txnId:paymentId, slot, slotLabel:`Slot ${slot}`,
     locationName:locName, duration:d.label, durationMins:d.mins,
     amount:d.price, status: claimed ? 'active' : 'refund_pending',
+    ...(claimed ? {} : {refundStatus:'requested', refundAmount:d.price}),
     bookedAt:serverNow(), expiresAt: claimed ? expiresAt : serverNow(),
     payMethod:'razorpay', vehicle, driverName
   };

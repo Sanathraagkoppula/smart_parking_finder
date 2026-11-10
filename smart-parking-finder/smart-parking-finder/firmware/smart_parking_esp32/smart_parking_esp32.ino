@@ -37,6 +37,7 @@ const unsigned long CYCLE_MS      = 800;
 /* ── CONNECTION TIMEOUTS ────────────────────────────── */
 const unsigned long WIFI_TIMEOUT_MS     = 30000;
 const unsigned long FB_READY_TIMEOUT_MS = 30000;
+const unsigned long SIGNIN_FAIL_WAIT_MS = 60000;   // wait before restarting after a failed sign-in
 
 /* ── GLOBALS ─────────────────────────────────────────── */
 FirebaseData   fbdo;
@@ -157,11 +158,19 @@ void connectWiFi(){
 }
 
 void connectFirebase(){
-  config.api_key       = FIREBASE_API_KEY;
   config.database_url  = FIREBASE_DATABASE_URL;
+#ifdef DATABASE_SECRET
+  // Database-secret mode: no sign-in step, so no rate limits or lockouts.
+  config.signer.tokens.legacy_token = DATABASE_SECRET;
+  Serial.println("🔍 Firebase mode: database secret");
+#else
+  config.api_key       = FIREBASE_API_KEY;
   auth.user.email      = DEVICE_EMAIL;
   auth.user.password   = DEVICE_PASSWORD;
   config.token_status_callback = tokenStatusCallback;
+  config.max_token_generation_retry = 3;   // avoid TOO_MANY_ATTEMPTS lockout on wrong password
+  Serial.printf("🔍 Firebase mode: device account %s\n", DEVICE_EMAIL);
+#endif
   Firebase.reconnectWiFi(true);
   Firebase.begin(&config, &auth);
 
@@ -169,7 +178,11 @@ void connectFirebase(){
   unsigned long start = millis();
   while(!Firebase.ready()){
     if(millis() - start > FB_READY_TIMEOUT_MS){
-      Serial.println("\n❌ Firebase sign-in timeout - check DEVICE_EMAIL / DEVICE_PASSWORD. Restarting");
+      Serial.println("\n❌ Firebase sign-in failed.");
+      Serial.println("   Check: user DEVICE_EMAIL exists in Firebase Authentication,");
+      Serial.println("   its password matches DEVICE_PASSWORD, and Email/Password sign-in is enabled.");
+      Serial.println("   Waiting 60 s before retrying (avoids TOO_MANY_ATTEMPTS lockout)...");
+      delay(SIGNIN_FAIL_WAIT_MS);
       ESP.restart();
     }
     Serial.print(".");

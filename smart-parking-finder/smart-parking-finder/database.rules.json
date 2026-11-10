@@ -3,7 +3,7 @@
     "parking": {
       ".read": true,
       "$slot": {
-        ".write": "auth != null && auth.token.email === 'esp32@smartparking.app'",
+        ".write": "auth != null && auth.token.email === 'esp32-device@smartparking.app'",
         ".validate": "newData.hasChildren(['status', 'slot']) && (newData.child('status').val() === 'filled' || newData.child('status').val() === 'empty')"
       }
     },
@@ -11,7 +11,7 @@
       ".read": "auth != null",
       "$slot": {
         "$id": {
-          ".write": "auth != null && auth.token.email === 'esp32@smartparking.app' && !data.exists()",
+          ".write": "auth != null && auth.token.email === 'esp32-device@smartparking.app' && !data.exists()",
           ".validate": "newData.hasChildren(['durationSec', 'endedAt']) && newData.child('durationSec').isNumber() && newData.child('durationSec').val() > 0"
         }
       }

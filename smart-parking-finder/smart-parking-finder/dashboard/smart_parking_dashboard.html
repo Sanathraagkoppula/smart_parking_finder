@@ -97,6 +97,10 @@ button{cursor:pointer;background:none;border:none}
 .seg button.active{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(23,32,42,.14)}
 .auth-form{display:flex;flex-direction:column;gap:14px}
 .auth-form .btn{margin-top:4px}
+.admin-entry{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:14px;color:var(--ink-2);text-decoration:none}
+.admin-entry b{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.admin-entry:hover b{color:#000}
+.admin-entry .i{width:16px;height:16px}
 .divider{display:flex;align-items:center;gap:12px;color:var(--ink-3);font-size:13px;margin:18px 0}
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--line)}
 
@@ -458,6 +462,10 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
       </div>
       <div class="divider">or</div>
       <button class="btn btn-secondary btn-block" onclick="doGuest()">Continue as guest</button>
+      <a class="admin-entry" href="admin.html">
+        <svg class="i"><use href="#i-shield"/></svg>
+        <span>Parking admin? <b>Log in to the admin panel</b></span>
+      </a>
     </div>
   </div>
 </div>

@@ -465,6 +465,16 @@ main{width:100%;max-width:1640px}
             </div>
           </div>
           <div class="panel">
+            <div class="panel-head"><h2>No-show release</h2></div>
+            <div class="panel-body">
+              <div class="field"><label for="st-noshow">Arrival window (minutes)</label>
+                <input class="input" id="st-noshow" type="number" min="0" max="120" step="1" placeholder="15">
+                <span class="hint">If the sensor doesn't detect a vehicle within this time after payment, the booking is released and marked No-show. Only applies to slots with a live sensor. 0 turns it off.</span></div>
+              <button class="btn btn-primary" onclick="saveNoShow()">Save</button>
+              <div class="save-msg" id="st-noshow-msg"></div>
+            </div>
+          </div>
+          <div class="panel">
             <div class="panel-head"><h2>Admins</h2></div>
             <div class="panel-body" style="font-size:14px;color:var(--ink-2)">
               <p>To give someone admin access, have them sign up on the user dashboard, then in Firebase Console → Realtime Database → Data add their UID under <b>admins</b> with the value <b>true</b>.</p>
@@ -750,8 +760,8 @@ auth.onAuthStateChanged(async user=>{
 
 function startListeners(){
   listen('/slots',           s=>{ slots=s.val()||{}; queueRender(); });
-  listen('/parking',         s=>{ parking=s.val()||{}; queueRender(); });
-  listen('/active_bookings', s=>{ active=s.val()||{}; queueRender(); });
+  listen('/parking',         s=>{ parking=s.val()||{}; sweepNoShows(); queueRender(); });
+  listen('/active_bookings', s=>{ active=s.val()||{}; sweepNoShows(); queueRender(); });
   listen('/bookings',        s=>{ allBookings=s.val()||{}; queueRender(); });
   listen('/users',           s=>{ users=s.val()||{}; queueRender(); });
   listen('/config',          s=>{ config=s.val()||{}; fillSettings(); });
@@ -787,9 +797,41 @@ function zoneColors(){
   slotList().forEach(s=>{ const z=(s.zone||'').toLowerCase(); if(!(z in map)) map[z]=KNOWN_ZONE_COLORS[z]||(free.length?free[i++%free.length]:ZONE_PALETTE[i++%ZONE_PALETTE.length]); });
   return map;
 }
+function noShowDue(n, ab, grace=0){
+  if(!ab || ab.status!=='confirmed' || !ab.arriveBy || ab.arrivedAt) return false;
+  if(ab.arriveBy > now()-grace) return false;
+  const p=parking[`slot${n}`];
+  return !!(p && p.live===true && p.status==='empty');
+}
 function liveBookingFor(n){
   const ab=active[`slot${n}`];
-  return ab && ab.expiresAt>now() ? ab : null;
+  return ab && ab.expiresAt>now() && !noShowDue(n, ab) ? ab : null;
+}
+// Admin copy of the no-show release: frees the slot and marks the user's booking,
+// so it works even when that user's dashboard is closed.
+const releasing=new Set();
+function sweepNoShows(){
+  Object.entries(active).forEach(([key,ab])=>{
+    if(releasing.has(key)) return;
+    const n=Number(key.replace('slot',''));
+    if(ab && !ab.bookedBy && !ab.expiresAt){                 // stray partial entry
+      releasing.add(key);
+      db.ref(`/active_bookings/${key}`).remove().catch(()=>{}).finally(()=>releasing.delete(key));
+      return;
+    }
+    if(!noShowDue(n, ab, 5000)) return;
+    releasing.add(key);
+    db.ref(`/active_bookings/${key}`).transaction(cur=>{
+      if(!cur || cur.bookingId!==ab.bookingId || cur.arrivedAt) return;
+      return null;
+    }).then(async res=>{
+      const rec=allBookings[ab.bookedBy]?.[ab.bookingId];
+      if(res.committed && rec && rec.status==='active'){
+        await db.ref(`/bookings/${ab.bookedBy}/${ab.bookingId}`).update({status:'no_show', releasedAt:TS, releasedBy:'auto'});
+        toast(`Slot ${n} released: no vehicle arrived`);
+      }
+    }).catch(()=>{}).finally(()=>releasing.delete(key));
+  });
 }
 function slotState(n){
   if(liveBookingFor(n)) return 'reserved';
@@ -808,10 +850,11 @@ function bookingState(b){
   if(b.refundStatus==='refunded') return 'refunded';
   if(b.refundStatus==='requested' || b.status==='refund_pending') return 'refund';
   if(b.status==='cancelled') return 'cancelled';
+  if(b.status==='no_show') return 'noshow';
   if(b.status==='active' && b.expiresAt>now()) return 'active';
   return 'expired';
 }
-const BK_LABEL = {active:['Active','b-free'], refund:['Refund to process','b-hold'], refunded:['Refunded','b-info'], cancelled:['Cancelled','b-busy'], expired:['Expired','b-mute']};
+const BK_LABEL = {active:['Active','b-free'], refund:['Refund to process','b-hold'], refunded:['Refunded','b-info'], cancelled:['Cancelled','b-busy'], noshow:['No-show','b-busy'], expired:['Expired','b-mute']};
 function profileOf(uid){ return users[uid]?.profile || {}; }
 function userName(uid){
   const p=profileOf(uid);
@@ -905,7 +948,7 @@ function renderBookings(){
   const rows=bookingRows();
   const counts={all:rows.length};
   rows.forEach(b=>{ const k=bookingState(b); counts[k]=(counts[k]||0)+1; });
-  const chips=[['all','All'],['active','Active'],['refund','Refund to process'],['refunded','Refunded'],['cancelled','Cancelled'],['expired','Expired']];
+  const chips=[['all','All'],['active','Active'],['refund','Refund to process'],['refunded','Refunded'],['cancelled','Cancelled'],['noshow','No-show'],['expired','Expired']];
   $('bk-chips').innerHTML=chips.map(([k,l])=>`<button class="chip${bkFilter===k?' active':''}" onclick="bkFilter='${k}';renderBookings()">${l} <span class="n">${counts[k]||0}</span></button>`).join('');
   const q=$('bk-search').value.trim().toLowerCase();
   const shown=rows.filter(b=>{
@@ -935,7 +978,7 @@ function bookingActions(b){
   const st=bookingState(b), out=[];
   if(st==='active')  out.push(`<button class="btn btn-danger btn-sm" onclick="cancelBooking('${b.uid}','${b.id}')">Cancel</button>`);
   if(st==='refund')  out.push(`<button class="btn btn-sign btn-sm" onclick="openRefund('${b.uid}','${b.id}')">Refund</button>`);
-  if(st==='cancelled' && Number(b.amount)>0) out.push(`<button class="btn btn-secondary btn-sm" onclick="openRefund('${b.uid}','${b.id}')">Refund</button>`);
+  if((st==='cancelled' || st==='noshow') && Number(b.amount)>0) out.push(`<button class="btn btn-secondary btn-sm" onclick="openRefund('${b.uid}','${b.id}')">Refund</button>`);
   if(b.txnId) out.push(`<a class="btn btn-ghost btn-sm" href="https://dashboard.razorpay.com/app/payments/${encodeURIComponent(b.txnId)}" target="_blank" rel="noopener" title="Open payment in Razorpay"><svg class="i"><use href="#i-ext"/></svg></a>`);
   return out.join('');
 }
@@ -1194,6 +1237,13 @@ async function saveUser(){
 function fillSettings(){
   if(document.activeElement!==$('st-rzp')) $('st-rzp').value=config.razorpayKeyId||'';
   if(document.activeElement!==$('st-stay')) $('st-stay').value=config.defaultStayMin||'';
+  if(document.activeElement!==$('st-noshow')) $('st-noshow').value=config.noShowMin ?? 15;
+}
+async function saveNoShow(){
+  const raw=$('st-noshow').value.trim(), v=Number(raw), msg=$('st-noshow-msg');
+  if(raw==='' || !(v===0 || (Number.isInteger(v) && v>=5 && v<=120))){ msg.className='save-msg err'; msg.textContent='Enter 0 (off) or a whole number from 5 to 120.'; return; }
+  try{ await db.ref('/config/noShowMin').set(v); msg.className='save-msg ok'; msg.textContent = v ? `Saved. New bookings must arrive within ${v} minutes.` : 'Saved. No-show release is off.'; }
+  catch(e){ msg.className='save-msg err'; msg.textContent='Could not save: '+e.message; }
 }
 async function saveRazorpayKey(){
   const v=$('st-rzp').value.trim(), msg=$('st-rzp-msg');
@@ -1234,7 +1284,7 @@ document.addEventListener('keydown', e=>{
   document.querySelectorAll('.overlay.open').forEach(o=>closeOverlay(o.id));
   closeDrawer();
 });
-setInterval(()=>{ if(me) queueRender(); }, 15000);
+setInterval(()=>{ if(me){ sweepNoShows(); queueRender(); } }, 15000);
 </script>
 </body>
 </html>

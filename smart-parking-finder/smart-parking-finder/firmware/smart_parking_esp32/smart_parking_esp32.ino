@@ -9,6 +9,11 @@
    - Demo slots 2-6 are only written if missing (not overwritten every boot)
    - WiFi / Firebase connect timeouts -> auto restart instead of hanging
    - Logs each completed parking session to /history (for "free by" estimates)
+   v3.1:
+   - Thresholds: FILLED under 15 cm, empty over 20 cm
+   - Marks a booked driver as arrived (/active_bookings/slot1/arrivedAt) so the
+     no-show auto-release never cancels a booking whose car actually came
+   - Slot 1 is flagged live:true (real sensor); demo slots are live:false
    Wiring (HC-SR04 -> ESP32):
      VCC  -> VIN (5V, board on USB)
      GND  -> GND
@@ -31,8 +36,8 @@ const bool DEMO_FILLED[5]         = { true, false, true, true, false };
 const bool DEMO_OVERWRITE_ON_BOOT = true;    // true = rewrite demo slots (fresh times) every boot
 
 /* ── DETECTION TUNING ───────────────────────────────── */
-const float         ENTER_CM      = 5.0;    // closer than this  -> FILLED
-const float         EXIT_CM       = 15.0;   // farther than this -> empty (after EXIT_CONFIRM reads)
+const float         ENTER_CM      = 15.0;   // closer than this  -> FILLED
+const float         EXIT_CM       = 20.0;   // farther than this -> empty (after EXIT_CONFIRM reads)
 const int           EXIT_CONFIRM  = 3;      // far readings in a row before "empty" (~1 s)
 const int           SAMPLES       = 3;      // median of 3 (odd number)
 const unsigned long ECHO_TIMEOUT  = 15000;  // µs; ~2.5 m max range, shorter wait on no echo
@@ -104,12 +109,13 @@ bool decideState(bool wasFilled, float dist){
 }
 
 /* ── FIREBASE ────────────────────────────────────────── */
-bool pushSlot(int slotNumber, bool filled, float dist){
+bool pushSlot(int slotNumber, bool filled, float dist, bool live){
   String path = "/parking/slot" + String(slotNumber);
   FirebaseJson json;
   json.set("status",       filled ? "filled" : "empty");
   json.set("distance",     dist > 0 ? (int)dist : -1);
   json.set("slot",         slotNumber);
+  json.set("live",         live);              // true = real sensor (no-show release allowed)
   json.set("updated/.sv",  "timestamp");   // server time in ms
   unsigned long t0 = millis();
   if(Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)){
@@ -148,6 +154,26 @@ void logSession(int slotNumber, unsigned long durationSec){
   }
 }
 
+// A car just parked: if this slot has a confirmed booking that has not been
+// marked as arrived yet, stamp arrivedAt so the no-show release skips it.
+void markArrival(int slotNumber){
+  String base = "/active_bookings/slot" + String(slotNumber);
+  if(!Firebase.RTDB.getJSON(&fbdo, base.c_str())) return;
+  if(fbdo.dataType() != "json") return;                  // no booking on this slot
+  FirebaseJson &js = fbdo.jsonObject();
+  FirebaseJsonData st, arr;
+  js.get(st,  "status");
+  js.get(arr, "arrivedAt");
+  if(!st.success || st.stringValue != "confirmed" || arr.success) return;
+  FirebaseJson upd;
+  upd.set("arrivedAt/.sv", "timestamp");
+  if(Firebase.RTDB.updateNode(&fbdo, base.c_str(), &upd)){
+    Serial.printf("  🚗 slot%d booking marked as arrived\n", slotNumber);
+  } else {
+    Serial.printf("  ❌ slot%d arrival mark failed: %s\n", slotNumber, fbdo.errorReason().c_str());
+  }
+}
+
 bool slotExists(int slotNumber){
   String path = "/parking/slot" + String(slotNumber) + "/status";
   if(!Firebase.RTDB.get(&fbdo, path.c_str())) return false;
@@ -162,7 +188,7 @@ void writeDemoSlots(){
       Serial.printf("  slot%d exists - kept\n", slot);
       continue;
     }
-    pushSlot(slot, DEMO_FILLED[i], DEMO_FILLED[i] ? 8.0 : 30.0);
+    pushSlot(slot, DEMO_FILLED[i], DEMO_FILLED[i] ? 8.0 : 30.0, false);
     delay(200);
   }
 }
@@ -262,10 +288,11 @@ void loop(){
   int want = slot1Filled ? 1 : 0;
   if(want != pushedState){
     int prev = pushedState;
-    if(pushSlot(1, slot1Filled, dist)){                      // retried next cycle on failure
+    if(pushSlot(1, slot1Filled, dist, true)){                // retried next cycle on failure
       if(want == 1){
         occupiedAtMs       = millis();
         occupiedStartKnown = (prev != -1);                   // unknown if already parked at boot
+        markArrival(1);                                      // after the push, so the website isn't delayed
       } else if(prev == 1 && occupiedStartKnown){
         logSession(1, (millis() - occupiedAtMs) / 1000);
         occupiedStartKnown = false;

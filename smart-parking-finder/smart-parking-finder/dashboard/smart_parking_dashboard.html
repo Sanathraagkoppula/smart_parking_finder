@@ -247,6 +247,9 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
 .dur-time{font-weight:600;font-size:14px}
 .dur-price{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .booking-summary{border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:6px}
+.noshow-note{font-size:13px;line-height:1.45;color:var(--ink-2);background:var(--hold-tint);border-left:4px solid var(--hold);padding:9px 12px;border-radius:6px}
+.noshow-note:empty{display:none}
+.bk-refund.warn{color:var(--busy)}
 .bs-row{display:flex;justify-content:space-between;font-size:14px;color:var(--ink-2)}
 .bs-row.total{color:var(--ink);font-weight:700;font-size:16px;margin-top:4px}
 
@@ -715,6 +718,7 @@ body{min-height:100vh;min-height:100dvh}
         <div class="bs-row"><span>Parking fee</span><span id="bs-fee">–</span></div>
         <div class="bs-row total"><span>Total</span><span id="bs-total">–</span></div>
       </div>
+      <div class="noshow-note" id="bk-noshow-note"></div>
       <button class="btn btn-primary btn-block" onclick="openPaymentModal()">Continue to payment</button>
     </div>
   </div>
@@ -804,6 +808,8 @@ const HOLD_MS            = 5 * 60 * 1000;              // slot hold while paying
 const CHECKOUT_TIMEOUT_S = 240;                        // Razorpay closes before the hold expires
 const EXPIRY_GRACE_MS    = 3000;                       // margin vs. server clock in rules
 const DEFAULT_STAY_MIN   = 60;                         // assumed stay until real history exists
+const DEFAULT_NOSHOW_MIN = 15;                         // no car within this many minutes -> booking released
+const NOSHOW_GRACE_MS    = 5000;                       // wait a little past arriveBy before releasing
 
 // Fallback layout, used until an admin adds slots in /slots (admin.html).
 const DEFAULT_SLOTS = {
@@ -884,6 +890,10 @@ let selectedLocName   = '';
 let visibleSlots      = [];
 let slotsListener     = null;
 let defaultStayMin    = DEFAULT_STAY_MIN;
+let noShowMin         = DEFAULT_NOSHOW_MIN;
+let activeLoaded      = false;   // true once /active_bookings has loaded at least once
+const noShowMarking   = new Set();
+const arrivalMarking  = new Set();
 let activeFilter      = 'all';
 let bookingSlot       = null;
 let selectedDurIdx    = 1;
@@ -1434,9 +1444,17 @@ function setFilter(f){
     document.getElementById(`ftab-${ff}`).classList.toggle('active', ff===f));
   applyVisibility();
 }
+// Slot has a real sensor (the ESP32 writes live:true), so "no car arrived" can be trusted.
+function sensorLive(i){ const p=slotData[`slot${i}`]; return !!(p && p.live===true); }
+// Confirmed booking whose driver never arrived before arriveBy -> released.
+function noShowDue(i, ab, grace=0){
+  if(!ab || ab.status!=='confirmed' || !ab.arriveBy || ab.arrivedAt) return false;
+  if(ab.arriveBy > serverNow()-grace) return false;
+  return sensorLive(i) && slotData[`slot${i}`].status==='empty';
+}
 function liveEntry(i){
   const ab=activeBookings[`slot${i}`];
-  return (ab && ab.expiresAt > serverNow()) ? ab : null;
+  return (ab && ab.expiresAt > serverNow() && !noShowDue(i, ab)) ? ab : null;
 }
 function isBookingLive(b){ return b && b.status==='active' && b.expiresAt > serverNow(); }
 function myLiveBookingFor(slotNum){
@@ -1562,6 +1580,11 @@ function updateAllSlotCards(){
       tlEl.textContent=formatTimeLeft(ms);
       tlEl.classList.toggle('urgent', ms>0 && ms<5*60000);
       if(exp && ms>0) etaEl.textContent = state==='mine' ? `Ends at ${fmtClock(exp)}` : `Free at ${fmtClock(exp)}`;
+      const mineAb = state==='mine' ? activeBookings[`slot${i}`] : null;
+      if(mineAb && mineAb.arriveBy && !mineAb.arrivedAt && !carPresent && sensorLive(i) && mineAb.arriveBy > serverNow()){
+        etaEl.textContent = `Arrive by ${fmtClock(mineAb.arriveBy)}`;
+        etaEl.classList.add('est');
+      }
       distEl.textContent = carPresent ? 'Vehicle detected' : '';
     } else if(state==='filled'){
       const since=occupiedSince(i);
@@ -1601,9 +1624,47 @@ function formatTimeLeft(ms){
 function cleanupExpired(){
   const now=serverNow();
   Object.entries(activeBookings).forEach(([key,ab])=>{
-    if(!ab || !ab.expiresAt || ab.expiresAt > now-EXPIRY_GRACE_MS || removing.has(key)) return;
+    if(!ab || removing.has(key)) return;
+    const slotNum=Number(key.replace('slot',''));
+    const expired = ab.expiresAt && ab.expiresAt <= now-EXPIRY_GRACE_MS;
+    if(!expired && !noShowDue(slotNum, ab, NOSHOW_GRACE_MS)) return;
     removing.add(key);
     db.ref(`/active_bookings/${key}`).remove().catch(()=>{}).finally(()=>removing.delete(key));
+  });
+  markMyArrival();
+  reconcileNoShows();
+}
+// My car is in my booked slot -> stamp arrivedAt (backup for the ESP32 doing it).
+function markMyArrival(){
+  if(!currentUser) return;
+  const uid=currentUser.uid;
+  Object.entries(activeBookings).forEach(([key,ab])=>{
+    if(!ab || ab.bookedBy!==uid || ab.status!=='confirmed' || ab.arrivedAt || arrivalMarking.has(key)) return;
+    if(slotData[key]?.status!=='filled') return;
+    arrivalMarking.add(key);
+    db.ref(`/active_bookings/${key}`).transaction(cur=>{
+      if(!cur || cur.bookedBy!==uid || cur.arrivedAt) return;
+      cur.arrivedAt=serverNow();
+      return cur;
+    }).then(res=>{
+      const v=res.committed && res.snapshot.val();
+      if(v && myBookings[v.bookingId]) db.ref(`/bookings/${uid}/${v.bookingId}/arrivedAt`).set(v.arrivedAt).catch(()=>{});
+    }).catch(()=>{}).finally(()=>arrivalMarking.delete(key));
+  });
+}
+// My booking's slot was released because I never arrived -> mark my record as a no-show.
+function reconcileNoShows(){
+  if(!currentUser || !activeLoaded) return;
+  const uid=currentUser.uid, now=serverNow();
+  Object.entries(myBookings).forEach(([id,b])=>{
+    if(!b || b.status!=='active' || !b.arriveBy || b.arrivedAt || noShowMarking.has(id)) return;
+    if(b.arriveBy > now-NOSHOW_GRACE_MS || b.expiresAt <= now) return;
+    const ab=activeBookings[`slot${b.slot}`];
+    if(ab && ab.bookingId===b.bookingId) return;              // still holding the slot
+    noShowMarking.add(id);
+    db.ref(`/bookings/${uid}/${id}`).update({status:'no_show', releasedAt:firebase.database.ServerValue.TIMESTAMP, releasedBy:'auto'})
+      .then(()=>showToast(`Slot ${b.slot} was released: no vehicle arrived by ${fmtClock(b.arriveBy)}.`,'warn'))
+      .catch(()=>{}).finally(()=>noShowMarking.delete(id));
   });
 }
 function startCountdownTimer(){
@@ -1654,12 +1715,14 @@ function startFirebaseListeners(uid){
   listen('/parking', snap=>{
     banner.style.display='none';
     slotData=snap.val()||{};
+    markMyArrival();
     updateAllSlotCards();
     document.getElementById('last-update').textContent='Updated: '+new Date().toLocaleTimeString();
   }, ()=>{ banner.style.display='block'; });
 
   listen('/active_bookings', snap=>{
     activeBookings=snap.val()||{};
+    activeLoaded=true;
     cleanupExpired();
     updateAllSlotCards();
   }, ()=>{ banner.style.display='block'; });
@@ -1667,6 +1730,10 @@ function startFirebaseListeners(uid){
   listen('/config/razorpayKeyId', snap=>{
     const k=snap.val();
     if(typeof k==='string' && /^rzp_(test|live)_[A-Za-z0-9]+$/.test(k.trim())) razorpayKey=k.trim();
+  });
+  listen('/config/noShowMin', snap=>{
+    const raw=snap.val(), v=Number(raw);
+    noShowMin = raw===null ? DEFAULT_NOSHOW_MIN : (v===0 ? 0 : (v>=5 && v<=120 ? v : DEFAULT_NOSHOW_MIN));
   });
   listen('/config/defaultStayMin', snap=>{
     const v=Number(snap.val());
@@ -1681,6 +1748,7 @@ function startFirebaseListeners(uid){
 
   listen(`/bookings/${uid}`, snap=>{
     myBookings=snap.val()||{};
+    reconcileNoShows();
     updateAllSlotCards();
     renderBookingsList();
   });
@@ -1702,6 +1770,7 @@ function renderBookingsList(){
     const status = b.refundStatus==='refunded' ? ['Refunded','refunded']
                  : b.status==='cancelled' ? (b.refundStatus==='requested' ? ['Refund requested','refund'] : ['Cancelled','cancelled'])
                  : b.status==='refund_pending' ? ['Refund pending','refund']
+                 : b.status==='no_show' ? ['No-show','cancelled']
                  : isActive ? ['Active','active'] : ['Expired','expired'];
     let countdown='';
     if(isActive){
@@ -1711,7 +1780,9 @@ function renderBookingsList(){
     const zone=ZONE_MAP[Number(b.slot)]||b.locationName||'';
     const rows=[
       ['Driver', b.driverName], ['Vehicle', b.vehicle], ['Duration', b.duration],
-      ['Booked', fmt(b.bookedAt)], isActive ? ['Until', fmt(b.expiresAt)] : null
+      ['Booked', fmt(b.bookedAt)], isActive ? ['Until', fmt(b.expiresAt)] : null,
+      isActive && b.arriveBy && !b.arrivedAt ? ['Arrive by', fmt(b.arriveBy)] : null,
+      b.arrivedAt ? ['Arrived', fmt(b.arrivedAt)] : null
     ].filter(r=>r && r[1]).map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
     const cancelBtn = isActive
       ? `<button class="btn btn-danger cancel-booking-btn" onclick="showCancelDialog('${esc(b.bookingId)}',${Number(b.slot)})">Cancel booking</button>`
@@ -1728,7 +1799,8 @@ function renderBookingsList(){
       </div>
       <div class="bk-txn">Payment ID ${esc(b.txnId||'–')}</div>
       ${b.refundStatus==='refunded'?`<div class="bk-refund ok">Refunded ₹${Number(b.refundAmount)||0}${b.refundRef?` · Ref ${esc(b.refundRef)}`:''}</div>`
-        : b.refundStatus==='requested'?`<div class="bk-refund">Refund of ₹${Number(b.refundAmount)||Number(b.amount)||0} is being processed by the parking admin.</div>`:''}
+        : b.refundStatus==='requested'?`<div class="bk-refund">Refund of ₹${Number(b.refundAmount)||Number(b.amount)||0} is being processed by the parking admin.</div>`
+        : b.status==='no_show'?`<div class="bk-refund warn">No vehicle arrived by ${esc(fmtClock(b.arriveBy))}, so the slot was released for other drivers.</div>`:''}
       ${cancelBtn}
     </div>`;
   }).join('');
@@ -1859,6 +1931,9 @@ function openBookingModal(slotNum){
   document.getElementById('bk-slot-name').textContent = 'Slot '+slotNum;
   document.getElementById('bk-slot-zone').textContent = ZONE_MAP[slotNum]||'';
   document.getElementById('bk-slot-num').textContent = slotNum;
+  document.getElementById('bk-noshow-note').textContent = noShowMin>0 && sensorLive(slotNum)
+    ? `Arrive within ${noShowMin} minutes of paying. If the sensor doesn't detect your vehicle by then, the booking is released and the fee is not refunded.`
+    : '';
   selectDuration(selectedDurIdx);
   showModal('booking-modal');
 }
@@ -2021,21 +2096,26 @@ async function finalizeBooking(slot, d, paymentId){
 
   // Convert my hold into a confirmed booking. Also succeeds if the hold
   // lapsed and nobody else took the slot. Aborts only if another user owns it.
-  let claimed=false, expiresAt=0;
+  let claimed=false, expiresAt=0, arriveBy=0, arrivedAt=0;
   try{
     const res=await db.ref(`/active_bookings/slot${slot}`).transaction(cur=>{
       const now=serverNow();
       const mine = cur && cur.bookedBy===uid && cur.bookingId===bookingId;
       const free = cur===null || (cur.expiresAt && cur.expiresAt < now-EXPIRY_GRACE_MS);
       if(!mine && !free) return;
-      return {
+      const entry = {
         bookedBy:uid, bookingId, status:'confirmed',
         expiresAt:now + d.mins*60000, duration:d.label, durationMins:d.mins,
         locationName:locName, txnId:paymentId
       };
+      if(noShowMin>0 && sensorLive(slot)){
+        if(slotData[`slot${slot}`].status==='filled') entry.arrivedAt=now;     // car already in the bay
+        else entry.arriveBy=Math.min(now + noShowMin*60000, entry.expiresAt);
+      }
+      return entry;
     });
     claimed=res.committed;
-    if(claimed) expiresAt=res.snapshot.val().expiresAt;
+    if(claimed){ const v=res.snapshot.val(); expiresAt=v.expiresAt; arriveBy=v.arriveBy||0; arrivedAt=v.arrivedAt||0; }
   }catch(e){ claimed=false; }
 
   const booking = {
@@ -2044,7 +2124,8 @@ async function finalizeBooking(slot, d, paymentId){
     amount:d.price, status: claimed ? 'active' : 'refund_pending',
     ...(claimed ? {} : {refundStatus:'requested', refundAmount:d.price}),
     bookedAt:serverNow(), expiresAt: claimed ? expiresAt : serverNow(),
-    payMethod:'razorpay', vehicle, driverName
+    payMethod:'razorpay', vehicle, driverName,
+    ...(arriveBy ? {arriveBy} : {}), ...(arrivedAt ? {arrivedAt} : {})
   };
   const saved=await saveWithRetry(`/bookings/${uid}/${bookingId}`, booking, 3);
   if(claimed && bookingDriver.saveToProfile) saveDriverToProfile(uid, driverName, vehicle);
@@ -2070,6 +2151,7 @@ async function finalizeBooking(slot, d, paymentId){
     <div class="succ-row"><span class="sr-label">Driver</span><span class="sr-val">${esc(driverName)}</span></div>
     ${vehicle?`<div class="succ-row"><span class="sr-label">Vehicle</span><span class="sr-val">${esc(vehicle)}</span></div>`:''}
     <div class="succ-row"><span class="sr-label">Valid Until</span><span class="sr-val">${expTime}, ${expDate}</span></div>
+    ${arriveBy?`<div class="succ-row"><span class="sr-label">Arrive by</span><span class="sr-val">${fmtClock(arriveBy)}</span></div>`:''}
     <div class="succ-row"><span class="sr-label">Payment</span><span class="sr-val">Razorpay</span></div>
     ${saved?'':`<div class="succ-row"><span class="sr-label" style="color:var(--hold)">Receipt not saved. Keep the payment ID.</span></div>`}`;
   document.getElementById('pay-success').classList.add('show');

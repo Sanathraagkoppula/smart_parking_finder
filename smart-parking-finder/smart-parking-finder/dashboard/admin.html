@@ -243,6 +243,61 @@ td.actions .btn+.btn{margin-left:6px}
   table.responsive td.actions::before{content:none}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+
+/* ══ Responsive hardening (phones, notches, tablets, large screens) ══ */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+.input,select.input,textarea.input{font-size:16px}
+.gate{min-height:100vh;min-height:100dvh;align-items:flex-start;justify-content:flex-start;padding:max(24px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.gate-box{margin:auto}
+.modal{max-height:92vh;max-height:92dvh}
+.overlay{padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.icon-btn{flex-shrink:0}
+.topbar{padding-left:max(24px,env(safe-area-inset-left));padding-right:max(24px,env(safe-area-inset-right))}
+.brand b{white-space:nowrap}
+#toast{bottom:calc(24px + env(safe-area-inset-bottom))}
+.drawer-body{padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+.drawer-head{padding-top:max(18px,env(safe-area-inset-top))}
+.summary-box dd{word-break:normal;overflow-wrap:anywhere}
+main{width:100%;max-width:1640px}
+@media(min-width:861px){ .sidenav{height:calc(100vh - 60px);height:calc(100dvh - 60px)} }
+@media(pointer:coarse){
+  .icon-btn{width:44px;height:44px}
+  .link-btn{padding:10px 2px;margin:-10px -2px}
+  .btn-sm{height:38px}
+  .chip{height:38px}
+}
+@media(max-width:860px){
+  .topbar{padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right))}
+  .layout{grid-template-rows:auto 1fr;align-content:start}
+}
+@media(max-width:600px){
+  .sidenav{display:grid;grid-template-columns:repeat(5,1fr);overflow:visible;padding:6px;gap:2px}
+  .nav-item{position:relative;flex-direction:column;justify-content:center;width:100%;height:auto;min-height:52px;padding:6px 2px;gap:3px;font-size:12px;text-align:center}
+  .nav-item .i{width:20px;height:20px}
+  .nav-badge{position:absolute;top:3px;right:calc(50% - 22px);margin:0;min-width:18px;height:16px;font-size:10px;padding:0 4px}
+  .top-actions .btn span{display:none}
+  .top-actions .btn{padding:0 10px}
+  .brand b{font-size:16px}
+  .view-head h1{font-size:28px}
+  .toolbar .input-icon{flex-basis:100%;max-width:none;min-width:0}
+  .summary-box{grid-template-columns:1fr;gap:0}
+  .summary-box dt{margin-top:6px}
+  .summary-box dd{text-align:left}
+  .modal-header{padding:18px 16px 0}
+  .modal-body{padding:16px 16px 20px}
+  .modal-actions{flex-direction:column-reverse}
+  .modal-actions .btn{width:100%}
+  .gate-box{padding:24px 20px}
+}
+@media(max-width:360px){
+  main{padding:16px 10px 32px}
+  .kpi{padding:12px}
+  .kpi b{font-size:26px}
+  .nav-item{font-size:11px}
+}
+@media(max-height:520px) and (orientation:landscape){
+  .topbar,.sidenav{position:static}
+}
 </style>
 </head>
 <body>

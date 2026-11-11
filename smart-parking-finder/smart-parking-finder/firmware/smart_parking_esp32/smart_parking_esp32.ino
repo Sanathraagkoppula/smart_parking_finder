@@ -9,7 +9,11 @@
    - Demo slots 2-6 are only written if missing (not overwritten every boot)
    - WiFi / Firebase connect timeouts -> auto restart instead of hanging
    - Logs each completed parking session to /history (for "free by" estimates)
-   Hardware: HC-SR04 Echo is 5 V - use a 1k / 2k divider into GPIO 34.
+   Wiring (HC-SR04 -> ESP32):
+     VCC  -> VIN (5V, board on USB)
+     GND  -> GND
+     Trig -> D13
+     Echo -> D34   (direct; a 1k/2k divider or an HC-SR04P 3.3V sensor is safer long-term)
    ========================================================================= */
 
 #include <WiFi.h>
@@ -27,12 +31,15 @@ const bool DEMO_FILLED[5]         = { true, false, true, true, false };
 const bool DEMO_OVERWRITE_ON_BOOT = true;    // true = rewrite demo slots (fresh times) every boot
 
 /* ── DETECTION TUNING ───────────────────────────────── */
-const float         ENTER_CM      = 20.0;
-const float         EXIT_CM       = 25.0;
-const int           EXIT_CONFIRM  = 4;
-const int           SAMPLES       = 5;
-const unsigned long ECHO_TIMEOUT  = 25000;
-const unsigned long CYCLE_MS      = 800;
+const float         ENTER_CM      = 5.0;    // closer than this  -> FILLED
+const float         EXIT_CM       = 15.0;   // farther than this -> empty (after EXIT_CONFIRM reads)
+const int           EXIT_CONFIRM  = 3;      // far readings in a row before "empty" (~1 s)
+const int           SAMPLES       = 3;      // median of 3 (odd number)
+const unsigned long ECHO_TIMEOUT  = 15000;  // µs; ~2.5 m max range, shorter wait on no echo
+const unsigned long SAMPLE_GAP_MS = 10;     // between samples
+const unsigned long CYCLE_MS      = 200;    // pause between scans -> ~4 updates/s
+const unsigned long HEARTBEAT_MS  = 20000;  // keeps the Firebase connection warm (no reconnect delay)
+const unsigned long PRINT_EVERY_MS = 1000;  // Serial status line rate
 
 /* ── CONNECTION TIMEOUTS ────────────────────────────── */
 const unsigned long WIFI_TIMEOUT_MS     = 30000;
@@ -47,6 +54,12 @@ FirebaseConfig config;
 bool slot1Filled = false;
 int  pushedState = -1;     // -1 = never pushed, 0 = empty, 1 = filled
 int  exitCounter = 0;
+
+int  noEchoCycles = 0;                       // consecutive scans with no echo at all
+const int NO_ECHO_AS_EMPTY = 20;             // ~5 s of silence -> treat slot as empty
+const int NO_ECHO_WARN_EVERY = 60;           // repeat the wiring hint every ~15 s
+unsigned long lastFirebaseIO = 0;            // last successful talk to Firebase
+unsigned long lastPrint      = 0;
 
 unsigned long occupiedAtMs       = 0;
 bool          occupiedStartKnown = false;   // false if car was already there at boot
@@ -68,7 +81,7 @@ float readDistance(){
   for(int i=0; i<SAMPLES; i++){
     float d = readOnce();
     if(d > 0) v[n++] = d;
-    delay(15);
+    if(i < SAMPLES-1) delay(SAMPLE_GAP_MS);
   }
   if(n == 0) return -1.0;                 // all timeouts - caller holds state
   for(int i=1; i<n; i++){
@@ -98,12 +111,26 @@ bool pushSlot(int slotNumber, bool filled, float dist){
   json.set("distance",     dist > 0 ? (int)dist : -1);
   json.set("slot",         slotNumber);
   json.set("updated/.sv",  "timestamp");   // server time in ms
+  unsigned long t0 = millis();
   if(Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)){
-    Serial.printf("  ✅ slot%d -> %s (%.0f cm)\n", slotNumber, filled ? "FILLED" : "empty", dist);
+    lastFirebaseIO = millis();
+    Serial.printf("  ✅ slot%d -> %s (%.0f cm) in %lu ms\n", slotNumber, filled ? "FILLED" : "empty", dist, millis() - t0);
     return true;
   }
   Serial.printf("  ❌ slot%d push failed: %s\n", slotNumber, fbdo.errorReason().c_str());
   return false;
+}
+
+// Small periodic write so the TLS connection never goes idle (idle -> server closes it ->
+// the next real update would wait 1-3 s for a new handshake). Also tells the dashboard
+// the sensor is online.
+void heartbeat(){
+  FirebaseJson json;
+  json.set("lastSeen/.sv", "timestamp");
+  json.set("rssi", WiFi.RSSI());
+  json.set("uptimeSec", (int)(millis() / 1000));
+  Firebase.RTDB.updateNode(&fbdo, "/devices/slot1", &json);
+  lastFirebaseIO = millis();                // also on failure: retry in 20 s, not every loop
 }
 
 // Records one completed parking session -> /history/slotN/<pushId>
@@ -172,6 +199,9 @@ void connectFirebase(){
   Serial.printf("🔍 Firebase mode: device account %s\n", DEVICE_EMAIL);
 #endif
   Firebase.reconnectWiFi(true);
+  fbdo.setBSSLBufferSize(4096, 1024);   // larger SSL buffers -> fewer "ssl engine closed" drops
+  fbdo.setResponseSize(2048);
+  config.timeout.serverResponse = 10 * 1000;
   Firebase.begin(&config, &auth);
 
   Serial.print("🔍 Waiting for Firebase");
@@ -202,6 +232,7 @@ void setup(){
   connectWiFi();
   connectFirebase();
   writeDemoSlots();
+  heartbeat();
   Serial.println("✅ Live scan starting on Slot 1...");
 }
 
@@ -211,7 +242,22 @@ void loop(){
   if(!Firebase.ready()){ delay(200); return; }
 
   float dist  = readDistance();
-  slot1Filled = decideState(slot1Filled, dist);
+
+  // No echo can mean "nothing in range" or a wiring fault. Short gaps keep the
+  // last state; a long silence counts as empty so the slot never sticks on FILLED.
+  float effective = dist;
+  if(dist < 0){
+    noEchoCycles++;
+    if(noEchoCycles >= NO_ECHO_AS_EMPTY) effective = EXIT_CM + 1;
+    if(noEchoCycles == NO_ECHO_AS_EMPTY || noEchoCycles % NO_ECHO_WARN_EVERY == 0){
+      Serial.println("⚠️  No echo from HC-SR04. Check: Echo -> D34, Trig -> D13,");
+      Serial.println("    VCC -> VIN (5V), GND -> GND, and point it at a surface within 2 m.");
+    }
+  } else {
+    if(noEchoCycles >= NO_ECHO_AS_EMPTY) Serial.println("✅ Echo is back");
+    noEchoCycles = 0;
+  }
+  slot1Filled = decideState(slot1Filled, effective);
 
   int want = slot1Filled ? 1 : 0;
   if(want != pushedState){
@@ -228,6 +274,11 @@ void loop(){
     }
   }
 
-  Serial.printf("Slot 1: %.1f cm -> %s\n", dist, slot1Filled ? "FILLED" : "empty");
+  if(millis() - lastFirebaseIO > HEARTBEAT_MS) heartbeat();
+
+  if(millis() - lastPrint >= PRINT_EVERY_MS){
+    lastPrint = millis();
+    Serial.printf("Slot 1: %.1f cm -> %s\n", dist, slot1Filled ? "FILLED" : "empty");
+  }
   delay(CYCLE_MS);
 }

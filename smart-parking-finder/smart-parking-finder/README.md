@@ -213,9 +213,8 @@ Readings between 20–25 cm (dead band) and sensor timeouts keep the previous st
 
 ## 👨‍💻 Author
 
-**Sangeeth Thumuganti**
-B.Tech CSE (Cybersecurity), SR University, Hyderabad
-[LinkedIn](https://www.linkedin.com/in/sangeeth-thumuganti-472bb2334)
+**koppula sanath raag **
+B.Tech CSE (Cybersecurity), SR University, warangal
 
 ---
 

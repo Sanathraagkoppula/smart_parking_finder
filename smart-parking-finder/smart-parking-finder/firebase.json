@@ -1,0 +1,1 @@
+{"database":{"rules":"database.rules.json"},"hosting":{"public":"dashboard","ignore":["firebase.json","**/.*","**/node_modules/**"],"rewrites":[{"source":"/","destination":"/smart_parking_dashboard.html"}],"cleanUrls":true,"headers":[{"source":"**/*.html","headers":[{"key":"Cache-Control","value":"no-cache"}]}]}}

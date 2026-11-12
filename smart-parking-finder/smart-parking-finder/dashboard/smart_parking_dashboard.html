@@ -259,6 +259,12 @@ footer{max-width:1180px;margin:0 auto;padding:0 32px 32px;font-size:13px;color:v
 .pa-slot{font-size:14px;color:var(--ink-2)}
 .razorpay-trust{display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;color:var(--ink-3)}
 .razorpay-trust .i{width:14px;height:14px}
+.demo-pay{display:flex;flex-direction:column;gap:12px}
+.demo-banner{font-size:13px;line-height:1.45;background:var(--hold-tint);border-left:4px solid var(--hold);color:var(--ink-2);padding:9px 12px;border-radius:6px}
+.demo-banner b{color:var(--ink)}
+.dc-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dc-num{font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.dc-brand{font-size:12px;color:var(--ink-3);min-height:16px}
 .pay-hold{font-size:13px;color:var(--hold);background:var(--hold-tint);border-radius:6px;padding:9px 12px;text-align:center}
 .pay-hold:empty{display:none}
 .pay-processing{display:none;flex-direction:column;align-items:center;gap:12px;padding:48px 24px;text-align:center}
@@ -741,7 +747,7 @@ body{min-height:100vh;min-height:100dvh}
     </div>
     <div id="pay-form-area">
       <div class="modal-header">
-        <div><div class="modal-title" id="pay-title">Payment</div><div class="modal-sub">Processed securely by Razorpay</div></div>
+        <div><div class="modal-title" id="pay-title">Payment</div><div class="modal-sub" id="pay-sub">Processed securely by Razorpay</div></div>
         <button class="close-btn" onclick="cancelBookingFlow()" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
       </div>
       <div class="modal-body">
@@ -750,8 +756,26 @@ body{min-height:100vh;min-height:100dvh}
           <div class="pa-value" id="pay-amount-display">₹0</div>
           <div class="pa-slot" id="pay-slot-display"></div>
         </div>
-        <button class="btn btn-primary btn-block" id="razorpay-btn" onclick="launchRazorpay()">Pay with Razorpay</button>
-        <div class="razorpay-trust"><svg class="i"><use href="#i-lock"/></svg>UPI, cards, net banking and wallets</div>
+        <div class="demo-pay" id="demo-pay">
+          <div class="demo-banner"><b>Demo checkout.</b> No real money is charged. Any card number works, for example 4111 1111 1111 1111. Don't enter a real card.</div>
+          <div class="field"><label for="dc-num">Card number</label>
+            <input class="input dc-num" id="dc-num" type="text" inputmode="numeric" autocomplete="off" placeholder="4111 1111 1111 1111" maxlength="19" oninput="fmtCardNum(this)">
+            <div class="dc-brand" id="dc-brand"></div></div>
+          <div class="field"><label for="dc-name">Name on card</label>
+            <input class="input" id="dc-name" type="text" autocomplete="off" maxlength="40"></div>
+          <div class="dc-row">
+            <div class="field"><label for="dc-exp">Expiry</label>
+              <input class="input" id="dc-exp" type="text" inputmode="numeric" autocomplete="off" placeholder="MM/YY" maxlength="5" oninput="fmtExpiry(this)"></div>
+            <div class="field"><label for="dc-cvv">CVV</label>
+              <input class="input" id="dc-cvv" type="password" inputmode="numeric" autocomplete="off" placeholder="123" maxlength="4" oninput="this.value=this.value.replace(/\D/g,'')"></div>
+          </div>
+          <div class="field-err" id="dc-err"></div>
+          <button class="btn btn-primary btn-block" id="demo-pay-btn" onclick="demoPay()">Make payment</button>
+        </div>
+        <div id="rzp-pay">
+          <button class="btn btn-primary btn-block" id="razorpay-btn" onclick="launchRazorpay()">Pay with Razorpay</button>
+          <div class="razorpay-trust"><svg class="i"><use href="#i-lock"/></svg>UPI, cards, net banking and wallets</div>
+        </div>
         <div class="pay-hold" id="pay-hold"></div>
       </div>
     </div>
@@ -803,7 +827,7 @@ const auth = firebase.auth();
 /* ══════════════════════════════════════════════════
    CONSTANTS
 ══════════════════════════════════════════════════ */
-const RAZORPAY_KEY       = "rzp_test_TjqcMpp7lHcIX3"; // fallback only — live value comes from /config/razorpayKeyId in Firebase
+const RAZORPAY_KEY       = "rzp_test_Tesq5yFsimrsOG"; // fallback only — live value comes from /config/razorpayKeyId in Firebase
 const HOLD_MS            = 5 * 60 * 1000;              // slot hold while paying
 const CHECKOUT_TIMEOUT_S = 240;                        // Razorpay closes before the hold expires
 const EXPIRY_GRACE_MS    = 3000;                       // margin vs. server clock in rules
@@ -910,6 +934,9 @@ let finalizing        = false;
 let listeners         = [];
 let slotHistory       = {};
 let razorpayKey       = RAZORPAY_KEY;
+let paymentMode       = 'demo';      // 'demo' (built-in test checkout) or 'razorpay' — from /config/paymentMode
+let lastPayMethod     = 'razorpay';
+let lastPayLabel      = 'Razorpay';
 const removing        = new Set();
 
 /* ══════════════════════════════════════════════════
@@ -1727,6 +1754,10 @@ function startFirebaseListeners(uid){
     updateAllSlotCards();
   }, ()=>{ banner.style.display='block'; });
 
+  listen('/config/paymentMode', snap=>{
+    paymentMode = snap.val()==='razorpay' ? 'razorpay' : 'demo';
+    applyPaymentMode();
+  });
   listen('/config/razorpayKeyId', snap=>{
     const k=snap.val();
     if(typeof k==='string' && /^rzp_(test|live)_[A-Za-z0-9]+$/.test(k.trim())) razorpayKey=k.trim();
@@ -1944,7 +1975,78 @@ function openBookingModal(slotNum){
 function resetPayButton(){
   const btn=document.getElementById('razorpay-btn');
   btn.disabled=false; btn.textContent='Pay with Razorpay';
+  const dbtn=document.getElementById('demo-pay-btn');
+  dbtn.disabled=false; dbtn.textContent=`Make payment ₹${DURATIONS[selectedDurIdx]?.price ?? ''}`;
   document.getElementById('pay-hold').textContent='';
+}
+function applyPaymentMode(){
+  const demo = paymentMode==='demo';
+  document.getElementById('demo-pay').style.display = demo ? '' : 'none';
+  document.getElementById('rzp-pay').style.display  = demo ? 'none' : '';
+  document.getElementById('pay-sub').textContent = demo ? 'Demo checkout · no real payment' : 'Processed securely by Razorpay';
+}
+
+/* ── Demo checkout: any card works, nothing is charged, card details are never saved or sent ── */
+function cardDigits(v){ return String(v||'').replace(/\D/g,''); }
+function cardBrand(d){
+  if(/^4/.test(d)) return 'Visa';
+  if(/^(5[1-5]|2[2-7])/.test(d)) return 'Mastercard';
+  if(/^(60|65|81|82|508)/.test(d)) return 'RuPay';
+  if(/^3[47]/.test(d)) return 'American Express';
+  return d.length ? 'Card' : '';
+}
+function fmtCardNum(el){
+  const d=cardDigits(el.value).slice(0,16);
+  el.value=d.replace(/(\d{4})(?=\d)/g,'$1 ');
+  document.getElementById('dc-brand').textContent=cardBrand(d);
+}
+function fmtExpiry(el){
+  let d=cardDigits(el.value).slice(0,4);
+  if(d.length===1 && d>'1') d='0'+d;
+  el.value = d.length>2 ? d.slice(0,2)+'/'+d.slice(2) : d;
+}
+function clearDemoCard(){
+  ['dc-num','dc-name','dc-exp','dc-cvv'].forEach(id=>{ document.getElementById(id).value=''; });
+  document.getElementById('dc-brand').textContent='';
+  document.getElementById('dc-err').textContent='';
+}
+function checkDemoCard(){
+  const num=cardDigits(document.getElementById('dc-num').value);
+  const name=document.getElementById('dc-name').value.trim();
+  const exp=document.getElementById('dc-exp').value.trim();
+  const cvv=cardDigits(document.getElementById('dc-cvv').value);
+  if(num.length<12) return {err:'Enter a card number (any 12–16 digits).', el:'dc-num'};
+  if(!name) return {err:'Enter the name on the card.', el:'dc-name'};
+  const m=exp.match(/^(\d{2})\/(\d{2})$/);
+  if(!m || +m[1]<1 || +m[1]>12) return {err:'Enter the expiry as MM/YY, for example 12/29.', el:'dc-exp'};
+  const now=new Date(), yy=now.getFullYear()%100, mm=now.getMonth()+1;
+  if(+m[2]<yy || (+m[2]===yy && +m[1]<mm)) return {err:'This card has expired. Use a future expiry date.', el:'dc-exp'};
+  if(cvv.length<3) return {err:'Enter a 3-digit CVV.', el:'dc-cvv'};
+  return {last4:num.slice(-4), brand:cardBrand(num)};
+}
+async function demoPay(){
+  if(!bookingSlot || !currentUser || paymentInProgress) return;
+  const err=document.getElementById('dc-err');
+  const card=checkDemoCard();
+  if(card.err){ err.textContent=card.err; document.getElementById(card.el).focus(); return; }
+  err.textContent='';
+  const d=DURATIONS[selectedDurIdx], slot=bookingSlot;
+  const btn=document.getElementById('demo-pay-btn');
+  btn.disabled=true; btn.textContent='Reserving slot…';
+  paymentInProgress=true;
+  const hold=await placeHold(slot, d);
+  if(!hold.ok){
+    paymentInProgress=false; resetPayButton();
+    showToast(hold.msg, hold.taken?'warn':'error');
+    if(hold.taken){ hideModal('payment-modal'); bookingSlot=null; }
+    return;
+  }
+  btn.textContent='Processing payment…';
+  await new Promise(r=>setTimeout(r, 1200));          // feels like a real gateway
+  lastPayMethod='demo';
+  lastPayLabel=`Demo ${card.brand} •••• ${card.last4}`;
+  clearDemoCard();                                     // card details never leave this page
+  finalizeBooking(slot, d, 'demo_'+randomId());
 }
 let bookingDriver = {name:'', vehicle:''};
 function openPaymentModal(){
@@ -1963,6 +2065,8 @@ function openPaymentModal(){
   document.getElementById('pay-processing').classList.remove('show');
   document.getElementById('pay-success').classList.remove('show');
   document.getElementById('pay-form-area').style.display='block';
+  clearDemoCard();
+  applyPaymentMode();
   resetPayButton();
   hideModal('booking-modal');           // hide only — keeps bookingSlot
   showModal('payment-modal');
@@ -2022,6 +2126,7 @@ async function launchRazorpay(){
   }
   document.getElementById('pay-hold').textContent=`Slot ${slot} is held for you for ${Math.round(HOLD_MS/60000)} minutes while you pay.`;
   btn.textContent='Opening Razorpay…';
+  lastPayMethod='razorpay'; lastPayLabel='Razorpay';
 
   const name  = bookingDriver.name||userProfile.displayName||currentUser.displayName||'Guest';
   const email = currentUser.isAnonymous ? '' : (currentUser.email||'');
@@ -2124,7 +2229,7 @@ async function finalizeBooking(slot, d, paymentId){
     amount:d.price, status: claimed ? 'active' : 'refund_pending',
     ...(claimed ? {} : {refundStatus:'requested', refundAmount:d.price}),
     bookedAt:serverNow(), expiresAt: claimed ? expiresAt : serverNow(),
-    payMethod:'razorpay', vehicle, driverName,
+    payMethod:lastPayMethod, payLabel:lastPayLabel, vehicle, driverName,
     ...(arriveBy ? {arriveBy} : {}), ...(arrivedAt ? {arrivedAt} : {})
   };
   const saved=await saveWithRetry(`/bookings/${uid}/${bookingId}`, booking, 3);
@@ -2152,7 +2257,7 @@ async function finalizeBooking(slot, d, paymentId){
     ${vehicle?`<div class="succ-row"><span class="sr-label">Vehicle</span><span class="sr-val">${esc(vehicle)}</span></div>`:''}
     <div class="succ-row"><span class="sr-label">Valid Until</span><span class="sr-val">${expTime}, ${expDate}</span></div>
     ${arriveBy?`<div class="succ-row"><span class="sr-label">Arrive by</span><span class="sr-val">${fmtClock(arriveBy)}</span></div>`:''}
-    <div class="succ-row"><span class="sr-label">Payment</span><span class="sr-val">Razorpay</span></div>
+    <div class="succ-row"><span class="sr-label">Payment</span><span class="sr-val">${esc(lastPayLabel)}</span></div>
     ${saved?'':`<div class="succ-row"><span class="sr-label" style="color:var(--hold)">Receipt not saved. Keep the payment ID.</span></div>`}`;
   document.getElementById('pay-success').classList.add('show');
   showToast('Slot '+slot+' booked','success');
@@ -2178,6 +2283,7 @@ function cancelBookingFlow(){
   hideModal('payment-modal');
   releaseHold();
   bookingSlot=null;
+  clearDemoCard();
   resetPayButton();
 }
 function closeModal(id){

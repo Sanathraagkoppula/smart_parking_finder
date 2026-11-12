@@ -447,7 +447,15 @@ main{width:100%;max-width:1640px}
           <div class="panel">
             <div class="panel-head"><h2>Payments</h2></div>
             <div class="panel-body">
-              <div class="field"><label for="st-rzp">Razorpay Key ID</label>
+              <div class="field"><label for="st-paymode">Checkout used by drivers</label>
+                <select class="input" id="st-paymode">
+                  <option value="demo">Demo checkout (any card, no real payment)</option>
+                  <option value="razorpay">Razorpay Checkout</option>
+                </select>
+                <span class="hint">Demo checkout books the slot as soon as the driver enters any card details and clicks Make payment. Nothing is charged and card details are not saved.</span></div>
+              <button class="btn btn-primary" onclick="savePayMode()">Save mode</button>
+              <div class="save-msg" id="st-paymode-msg"></div>
+              <div class="field" style="margin-top:18px"><label for="st-rzp">Razorpay Key ID</label>
                 <input class="input" id="st-rzp" placeholder="rzp_test_XXXXXXXXXXXX" autocomplete="off">
                 <span class="hint">Copy it from Razorpay → Account &amp; Settings → API Keys. Use the Key ID only, never the Key Secret.</span></div>
               <button class="btn btn-primary" onclick="saveRazorpayKey()">Save key</button>
@@ -525,7 +533,7 @@ main{width:100%;max-width:1640px}
     <div class="modal-body">
       <dl class="summary-box" id="rf-summary"></dl>
       <a class="btn btn-sign" id="rf-rzp" target="_blank" rel="noopener"><svg class="i"><use href="#i-ext"/></svg>Open this payment in Razorpay</a>
-      <div class="note-box">In Razorpay, open the payment and choose <b>Issue Refund</b>. Copy the refund ID it shows (starts with <b>rfnd_</b>) and paste it below.</div>
+      <div class="note-box" id="rf-note-box">In Razorpay, open the payment and choose <b>Issue Refund</b>. Copy the refund ID it shows (starts with <b>rfnd_</b>) and paste it below.</div>
       <div class="grid-2">
         <div class="field"><label for="rf-amount">Amount refunded (₹)</label><input class="input" id="rf-amount" type="number" min="1" step="1"></div>
         <div class="field"><label for="rf-ref">Razorpay refund ID</label><input class="input" id="rf-ref" placeholder="rfnd_XXXXXXXX"></div>
@@ -979,7 +987,7 @@ function bookingActions(b){
   if(st==='active')  out.push(`<button class="btn btn-danger btn-sm" onclick="cancelBooking('${b.uid}','${b.id}')">Cancel</button>`);
   if(st==='refund')  out.push(`<button class="btn btn-sign btn-sm" onclick="openRefund('${b.uid}','${b.id}')">Refund</button>`);
   if((st==='cancelled' || st==='noshow') && Number(b.amount)>0) out.push(`<button class="btn btn-secondary btn-sm" onclick="openRefund('${b.uid}','${b.id}')">Refund</button>`);
-  if(b.txnId) out.push(`<a class="btn btn-ghost btn-sm" href="https://dashboard.razorpay.com/app/payments/${encodeURIComponent(b.txnId)}" target="_blank" rel="noopener" title="Open payment in Razorpay"><svg class="i"><use href="#i-ext"/></svg></a>`);
+  if(b.txnId && !isDemoPay(b)) out.push(`<a class="btn btn-ghost btn-sm" href="https://dashboard.razorpay.com/app/payments/${encodeURIComponent(b.txnId)}" target="_blank" rel="noopener" title="Open payment in Razorpay"><svg class="i"><use href="#i-ext"/></svg></a>`);
   return out.join('');
 }
 
@@ -1128,6 +1136,7 @@ function cancelBooking(uid,id){
     }
   });
 }
+function isDemoPay(b){ return b.payMethod==='demo' || /^demo_/.test(String(b.txnId||'')); }
 function openRefund(uid,id){
   const b=findBooking(uid,id); if(!b) return;
   refundTarget={uid,id};
@@ -1137,9 +1146,15 @@ function openRefund(uid,id){
     <dt>Account</dt><dd>${esc(p.email||'Guest')}</dd>
     <dt>Slot</dt><dd>Slot ${Number(b.slot)}, ${esc(b.duration||'')}</dd>
     <dt>Paid</dt><dd>${rupees(b.amount)} on ${esc(fmtDay(b.bookedAt))}</dd>
+    <dt>Payment</dt><dd>${esc(b.payLabel || (isDemoPay(b)?'Demo checkout':'Razorpay'))}</dd>
     <dt>Payment ID</dt><dd>${esc(b.txnId||'–')}</dd>`;
-  const link=$('rf-rzp');
-  if(b.txnId){ link.href=`https://dashboard.razorpay.com/app/payments/${encodeURIComponent(b.txnId)}`; link.classList.remove('hidden'); }
+  const link=$('rf-rzp'), demo=isDemoPay(b);
+  $('rf-note-box').innerHTML = demo
+    ? 'This was a <b>demo payment</b>, so no money was taken and there is nothing to refund in Razorpay. Saving marks the booking as refunded.'
+    : 'In Razorpay, open the payment and choose <b>Issue Refund</b>. Copy the refund ID it shows (starts with <b>rfnd_</b>) and paste it below.';
+  $('rf-ref').closest('.field').style.display = demo ? 'none' : '';
+  refundTarget.demo = demo;
+  if(b.txnId && !demo){ link.href=`https://dashboard.razorpay.com/app/payments/${encodeURIComponent(b.txnId)}`; link.classList.remove('hidden'); }
   else link.classList.add('hidden');
   $('rf-amount').value = Number(b.refundAmount)||Number(b.amount)||'';
   $('rf-amount').max = Number(b.amount)||'';
@@ -1152,10 +1167,10 @@ async function saveRefund(){
   const amt=Number($('rf-amount').value), ref=$('rf-ref').value.trim();
   if(!(amt>0)){ err.textContent='Enter the amount you refunded.'; return; }
   if(amt>(Number(b.amount)||0)){ err.textContent=`The refund can't be more than the ${rupees(b.amount)} paid.`; return; }
-  if(ref && !/^rfnd_[A-Za-z0-9]+$/.test(ref)){ err.textContent='Razorpay refund IDs start with rfnd_. Check and paste it again.'; return; }
+  if(!refundTarget.demo && ref && !/^rfnd_[A-Za-z0-9]+$/.test(ref)){ err.textContent='Razorpay refund IDs start with rfnd_. Check and paste it again.'; return; }
   const btn=$('rf-save'); btn.disabled=true;
   try{
-    const upd={refundStatus:'refunded', refundAmount:amt, refundRef:ref, refundNote:$('rf-note').value.trim(), refundedAt:TS, refundedBy:me.email||me.uid};
+    const upd={refundStatus:'refunded', refundAmount:amt, refundRef:refundTarget.demo?'demo':ref, refundNote:$('rf-note').value.trim(), refundedAt:TS, refundedBy:me.email||me.uid};
     if(b.status==='active') Object.assign(upd,{status:'cancelled', cancelledBy:'admin', cancelledAt:TS});
     if(b.status==='active'){
       const r=db.ref(`/active_bookings/slot${b.slot}`); const cur=(await r.get()).val();
@@ -1236,6 +1251,7 @@ async function saveUser(){
 ══════════════════════════════════════════════════ */
 function fillSettings(){
   if(document.activeElement!==$('st-rzp')) $('st-rzp').value=config.razorpayKeyId||'';
+  if(document.activeElement!==$('st-paymode')) $('st-paymode').value=config.paymentMode==='razorpay'?'razorpay':'demo';
   if(document.activeElement!==$('st-stay')) $('st-stay').value=config.defaultStayMin||'';
   if(document.activeElement!==$('st-noshow')) $('st-noshow').value=config.noShowMin ?? 15;
 }
@@ -1243,6 +1259,11 @@ async function saveNoShow(){
   const raw=$('st-noshow').value.trim(), v=Number(raw), msg=$('st-noshow-msg');
   if(raw==='' || !(v===0 || (Number.isInteger(v) && v>=5 && v<=120))){ msg.className='save-msg err'; msg.textContent='Enter 0 (off) or a whole number from 5 to 120.'; return; }
   try{ await db.ref('/config/noShowMin').set(v); msg.className='save-msg ok'; msg.textContent = v ? `Saved. New bookings must arrive within ${v} minutes.` : 'Saved. No-show release is off.'; }
+  catch(e){ msg.className='save-msg err'; msg.textContent='Could not save: '+e.message; }
+}
+async function savePayMode(){
+  const v=$('st-paymode').value==='razorpay'?'razorpay':'demo', msg=$('st-paymode-msg');
+  try{ await db.ref('/config/paymentMode').set(v); msg.className='save-msg ok'; msg.textContent = v==='demo' ? 'Saved. Drivers now see the demo card checkout.' : 'Saved. Drivers now pay with Razorpay.'; }
   catch(e){ msg.className='save-msg err'; msg.textContent='Could not save: '+e.message; }
 }
 async function saveRazorpayKey(){

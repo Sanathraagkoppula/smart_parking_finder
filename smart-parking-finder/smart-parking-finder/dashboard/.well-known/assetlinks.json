@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.web.finialsmartparking.twa",
+        "sha256_cert_fingerprints": ["A5:D4:E1:56:BC:73:0F:69:02:52:54:41:1E:1B:B0:35:B6:CF:82:70:33:51:A0:36:18:C3:5A:E5:59:A7:FB:F2"]
+      }
+    }]

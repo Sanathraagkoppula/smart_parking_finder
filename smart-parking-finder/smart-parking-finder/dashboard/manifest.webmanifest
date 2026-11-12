@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "Smart Parking Finder · SR University",
+  "short_name": "Smart Parking",
+  "description": "Find a free parking slot on campus in real time, book it and pay in seconds. Live slot status comes from ESP32 ultrasonic sensors through Firebase.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#FFC72C",
+  "theme_color": "#FFC72C",
+  "lang": "en-IN",
+  "dir": "ltr",
+  "categories": ["navigation", "utilities", "travel"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "screenshots/wide-lot.png", "sizes": "1280x720", "type": "image/png", "form_factor": "wide", "label": "Live parking lot with free, occupied and reserved slots" },
+    { "src": "screenshots/narrow-lot.png", "sizes": "390x844", "type": "image/png", "form_factor": "narrow", "label": "Live slot status on a phone" },
+    { "src": "screenshots/narrow-book.png", "sizes": "390x844", "type": "image/png", "form_factor": "narrow", "label": "Book a slot and choose how long to park" }
+  ],
+  "shortcuts": [
+    { "name": "Find a slot", "short_name": "Find slot", "url": "./", "icons": [{ "src": "icons/shortcut-admin.png", "sizes": "96x96", "type": "image/png" }] },
+    { "name": "Admin panel", "short_name": "Admin", "url": "./admin.html", "icons": [{ "src": "icons/shortcut-admin.png", "sizes": "96x96", "type": "image/png" }] }
+  ]
+}

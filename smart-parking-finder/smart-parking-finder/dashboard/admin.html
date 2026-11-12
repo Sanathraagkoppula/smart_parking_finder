@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="theme-color" content="#FFC72C">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Smart Parking">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>Admin · Smart Parking Finder</title>
@@ -1306,6 +1313,11 @@ document.addEventListener('keydown', e=>{
   closeDrawer();
 });
 setInterval(()=>{ if(me){ sweepNoShows(); queueRender(); } }, 15000);
+</script>
+<script>
+if('serviceWorker' in navigator && location.protocol!=='file:'){
+  addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
 </script>
 </body>
 </html>

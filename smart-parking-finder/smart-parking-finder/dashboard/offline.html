@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#FFC72C">
+<title>Offline · Smart Parking Finder</title>
+<link rel="icon" href="icons/favicon-48.png">
+<style>
+  *{box-sizing:border-box;margin:0}
+  body{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px;
+       background:#FFC72C;color:#17202A;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:center}
+  .card{background:#fff;border-radius:16px;padding:32px 24px;max-width:380px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.12)}
+  img{width:72px;height:72px;margin-bottom:16px}
+  h1{font-size:22px;margin-bottom:8px}
+  p{font-size:16px;line-height:1.5;color:#4A5663;margin-bottom:20px}
+  button{font:inherit;font-weight:700;font-size:16px;background:#17202A;color:#FFC72C;border:0;border-radius:10px;padding:14px 20px;width:100%;min-height:48px;cursor:pointer}
+</style>
+</head>
+<body>
+  <div class="card">
+    <img src="icons/icon-192.png" alt="">
+    <h1>You're offline</h1>
+    <p>Live slot status needs an internet connection. Check your Wi-Fi or mobile data and try again.</p>
+    <button onclick="location.reload()">Try again</button>
+  </div>
+</body>
+</html>
